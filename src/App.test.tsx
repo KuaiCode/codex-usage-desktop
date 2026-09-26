@@ -395,6 +395,39 @@ describe("App", () => {
     expect(invokeMock.mock.calls.filter(([command]) => command === "fetch_codex_limits")).toHaveLength(2);
   });
 
+  it("retries limits after a startup network error when returning from the background", async () => {
+    let now = 10_000;
+    let limitsFetchCount = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    setPageActive(true);
+
+    invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "fetch_codex_limits") {
+        limitsFetchCount += 1;
+        if (limitsFetchCount === 1) throw new Error("network offline");
+        return limits(70);
+      }
+      if (command === "scan_usage") return scan(0);
+      if (command === "fetch_overview" && args?.range === "30d") return overview();
+      if (command === "check_for_updates") {
+        return { hasUpdate: false, currentVersion: "1.0.0", latestVersion: "1.0.0", latestTag: "v1.0.0", releaseName: null, releaseNotes: null, releaseUrl: "" };
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    render(<App />);
+    await screen.findByText(/Unable to get Codex limits right now/);
+
+    setPageActive(false);
+    window.dispatchEvent(new Event("blur"));
+    now += 5 * 60_000 + 1;
+    setPageActive(true);
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => expect(screen.getAllByText("70%").length).toBeGreaterThan(0));
+    expect(invokeMock.mock.calls.filter(([command]) => command === "fetch_codex_limits")).toHaveLength(2);
+  });
+
   it("updates overview and limits after a background resume scan finds changed files", async () => {
     let now = 10_000;
     let scanCount = 0;
@@ -2127,6 +2160,49 @@ describe("App", () => {
         }),
       }));
     });
+  });
+
+  it("retries limits after a startup network error on a native background refresh", async () => {
+    let limitsFetchCount = 0;
+    invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "fetch_codex_limits") {
+        limitsFetchCount += 1;
+        if (limitsFetchCount === 1) throw new Error("network offline");
+        return {
+          ...limits(70),
+          membershipLevel: "pro",
+          weekly: { usedPercent: 45, remainingPercent: 55, windowMinutes: 10080, resetsAt: "2026-06-18T00:00:00.000Z" },
+        };
+      }
+      if (command === "scan_usage") return scan(0);
+      if (command === "fetch_overview" && args?.range === "30d") return overview();
+      if (command === "check_for_updates") {
+        return { hasUpdate: false, currentVersion: "1.0.0", latestVersion: "1.0.0", latestTag: "v1.0.0", releaseName: null, releaseNotes: null, releaseUrl: "" };
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+
+    render(<App />);
+    await screen.findByText(/Unable to get Codex limits right now/);
+    await waitFor(() => expect(eventListeners.get("background-refresh-completed")).toHaveLength(1));
+
+    await act(async () => {
+      eventListeners.get("background-refresh-completed")?.[0]?.({
+        payload: {
+          scan: scan(0),
+          limits: null,
+          limitsError: null,
+          limitsSkipped: true,
+          refreshedAt: "2026-06-11T00:00:00.000Z",
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("70%").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("55%").length).toBeGreaterThan(0);
+    });
+    expect(invokeMock.mock.calls.filter(([command]) => command === "fetch_codex_limits")).toHaveLength(2);
   });
 
   it("unsubscribes when listener setup finishes after unmount", async () => {

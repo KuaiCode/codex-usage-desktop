@@ -434,7 +434,7 @@ export function useUsageDashboard() {
     lastAutoScanTimeRef.current = now;
     const startedAt = performance.now();
     try {
-      await scanAndReloadOverview(startedAt, { force: hasExpiredCodexLimitWindow(codexLimits) });
+      await scanAndReloadOverview(startedAt, { force: codexLimitsError !== null || hasExpiredCodexLimitWindow(codexLimits) });
     } catch (scanError) {
       setError(errorMessage(scanError, "Background refresh failed."));
     }
@@ -603,7 +603,7 @@ export function useUsageDashboard() {
     } else if (refresh.limitsError) {
       setCodexLimitsError(refresh.limitsError);
       lastLimitsFetchTimeRef.current = Date.now();
-    } else if (refresh.limitsSkipped && hasExpiredCodexLimitWindow(codexLimits)) {
+    } else if (refresh.limitsSkipped && (codexLimitsError !== null || hasExpiredCodexLimitWindow(codexLimits))) {
       await loadCodexLimits({ force: true });
     }
 
