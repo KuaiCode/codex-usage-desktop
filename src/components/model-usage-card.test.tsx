@@ -136,10 +136,14 @@ describe("model analytics", () => {
       },
     })]} />);
     const row = document.querySelector('[data-quota-model="gpt-a"]') as HTMLElement;
-    expect(screen.getByText("Shared scale: 0–125.0%")).toBeInTheDocument();
-    expect(within(row).getByRole("img", { name: "5-hour quota: 125.0%" }).firstElementChild).toHaveStyle({ width: "100%" });
-    expect(within(document.querySelector('[data-quota-model="gpt-b"]') as HTMLElement).getByRole("img", { name: "Weekly quota: 25.0%" }).firstElementChild).toHaveStyle({ width: "20%" });
-    expect(within(row).getByRole("img", { name: "Weekly quota: No attributable snapshots" })).toBeInTheDocument();
+    expect(screen.getByText("Total scale: 0–125.0%")).toBeInTheDocument();
+    expect(screen.getByText("Per 1M tokens scale: 0–100.0%")).toBeInTheDocument();
+    expect(within(row).getByRole("img", { name: "5-hour quota · Total: 125.0%" }).firstElementChild).toHaveStyle({ width: "100%" });
+    expect(within(row).getByRole("img", { name: "5-hour quota · Per 1M tokens: 2.0%" }).firstElementChild).toHaveStyle({ width: "2%" });
+    const weekly = document.querySelector('[data-quota-model="gpt-b"]') as HTMLElement;
+    expect(within(weekly).getByRole("img", { name: "Weekly quota · Total: 25.0%" }).firstElementChild).toHaveStyle({ width: "20%" });
+    expect(within(weekly).getByRole("img", { name: "Weekly quota · Per 1M tokens: 25.0%" }).firstElementChild).toHaveStyle({ width: "25%" });
+    expect(within(row).getByRole("img", { name: "Weekly quota · Per 1M tokens: No attributable snapshots" })).toBeInTheDocument();
     expect(row).not.toHaveAttribute("open");
     await user.click(within(row).getByText("gpt-a"));
     expect(row).toHaveAttribute("open");
