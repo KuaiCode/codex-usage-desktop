@@ -1,4 +1,8 @@
 {
+  "3.7.0": {
+    "zh": "- fix: retry Codex limits after startup network errors\n- feat(i18n): centralize language configuration and localize formats\n- fix: use English number formatting for token counts\n- fix: omit US prefix from Chinese currency amounts\n- feat: add GitHub release download trend script\n- feat(models): estimate quota consumption from session snapshots\n- feat(models): compare quota estimates with expandable charts\n- feat(models): chart per-million quota consumption",
+    "en": "- fix: retry Codex limits after startup network errors\n- feat(i18n): centralize language configuration and localize formats\n- fix: use English number formatting for token counts\n- fix: omit US prefix from Chinese currency amounts\n- feat: add GitHub release download trend script\n- feat(models): estimate quota consumption from session snapshots\n- feat(models): compare quota estimates with expandable charts\n- feat(models): chart per-million quota consumption"
+  },
   "3.6.1": {
     "zh": "- fix: relaunch macOS app after update\n- fix: prevent duplicate background limit fetches on Windows",
     "en": "- fix: relaunch macOS app after update\n- fix: prevent duplicate background limit fetches on Windows"
