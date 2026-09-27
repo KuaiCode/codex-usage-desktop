@@ -12,6 +12,8 @@ import { hasSubscription } from "./codex-limits-card";
 import tauriConfig from "../../src-tauri/tauri.conf.json";
 import { useTranslation } from "react-i18next";
 import { useMemo, useState } from "react";
+import { getReleaseNotes } from "@/lib/release-notes";
+import { getLanguage, languageCodes, languages } from "@/lib/languages";
 import type { TrayCountdownUnits, TrayTitleFormats } from "@/lib/tray-format";
 import {
   Select,
@@ -103,19 +105,10 @@ export function SettingsPage({
   );
   const parsedReleaseNotes = useMemo(() => {
     if (!updateInfo?.releaseNotes) return "";
-    try {
-      const parsed = JSON.parse(updateInfo.releaseNotes);
-      if (parsed && typeof parsed === "object") {
-        const lang = i18n.language?.startsWith("zh") ? "zh" : "en";
-        return parsed[lang] || parsed["en"] || updateInfo.releaseNotes;
-      }
-    } catch (e) {
-      // Ignored: not a JSON object
-    }
-    return updateInfo.releaseNotes;
-  }, [updateInfo?.releaseNotes, i18n.language]);
+    return getReleaseNotes(updateInfo.releaseNotes, i18n.resolvedLanguage ?? i18n.language);
+  }, [updateInfo?.releaseNotes, i18n.language, i18n.resolvedLanguage]);
   const hasSub = hasSubscription(codexLimits);
-  const currentLanguage = i18n.language || "en";
+  const currentLanguage = getLanguage(i18n.resolvedLanguage ?? i18n.language);
 
   const optionKeys: Array<"limit5h" | "limitWeekly" | "tokens" | "cost"> = hasSub
     ? ["limit5h", "limitWeekly", "tokens", "cost"]
@@ -190,9 +183,9 @@ export function SettingsPage({
                   <SelectValue placeholder={t("settings.language_label")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="en">{t("settings.lang_en")}</SelectItem>
-                  <SelectItem value="zh">{t("settings.lang_zh")}</SelectItem>
-                  <SelectItem value="ja">{t("settings.lang_ja")}</SelectItem>
+                  {languageCodes.map((code) => (
+                    <SelectItem key={code} value={code}>{languages[code].name}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

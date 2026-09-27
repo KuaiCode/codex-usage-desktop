@@ -704,8 +704,6 @@
     "language_title": "言語設定",
     "language_desc": "アプリケーションの表示言語を変更します。",
     "language_label": "アプリの言語",
-    "lang_en": "英語",
-    "lang_zh": "简体中文",
     "menu_bar_title": "メニューバー/システムトレイ設定",
     "menu_bar_desc": "macOSのメニューバー、Windowsのトレイツールチップ、トレイメニューに表示する項目を設定します。",
     "menu_bar_show_title": "メニューバー/トレイツールチップに表示",
@@ -730,8 +728,7 @@
     "menu_bar_workspace": "ワークスペース",
     "menu_bar_show_main": "メインウィンドウを表示",
     "menu_bar_quit": "終了",
-    "reset_confirm": "キャッシュされた使用状況と価格データをリセットして、ローカルの Codex ログから再構築しますか?ソースログは削除されません。",
-    "lang_ja": "日本語"
+    "reset_confirm": "キャッシュされた使用状況と価格データをリセットして、ローカルの Codex ログから再構築しますか?ソースログは削除されません。"
   },
   "logs": {
     "title": "リアルタイムシステムログ",

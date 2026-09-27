@@ -16,6 +16,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/ca
 import { RangeSwitcher } from "@/components/range-switcher";
 import { useUsageDashboard } from "@/hooks/use-usage-dashboard";
 import { buildMetricCards, getRangeLabel } from "@/lib/usage-dashboard";
+import { getReleaseNotes } from "@/lib/release-notes";
 import type { SessionDetailRow } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles, X, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
@@ -117,17 +118,8 @@ export default function App() {
 
   const parsedReleaseNotes = useMemo(() => {
     if (!updateInfo?.releaseNotes) return "";
-    try {
-      const parsed = JSON.parse(updateInfo.releaseNotes);
-      if (parsed && typeof parsed === "object") {
-        const lang = i18n.language?.startsWith("zh") ? "zh" : "en";
-        return parsed[lang] || parsed["en"] || updateInfo.releaseNotes;
-      }
-    } catch (e) {
-      // Ignored: not a JSON object
-    }
-    return updateInfo.releaseNotes;
-  }, [updateInfo?.releaseNotes, i18n.language]);
+    return getReleaseNotes(updateInfo.releaseNotes, i18n.resolvedLanguage ?? i18n.language);
+  }, [updateInfo?.releaseNotes, i18n.language, i18n.resolvedLanguage]);
 
   const metrics = overview ? buildMetricCards(overview, range, t) : [];
   const projects = overview?.projects ?? [];

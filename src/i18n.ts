@@ -1,14 +1,12 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
-import en from "./locales/en.json";
-import zh from "./locales/zh.json";
-import ja from "./locales/ja.json";
+import { findLanguage, languageCodes, languages } from "./lib/languages";
 
 // Initialize language from localStorage or navigator language
 const getInitialLanguage = (): string => {
   try {
     const saved = localStorage.getItem("language");
-    if (saved === "zh" || saved === "ja" || saved === "en") {
+    if (saved && languageCodes.includes(saved as (typeof languageCodes)[number])) {
       return saved;
     }
   } catch (e) {
@@ -16,12 +14,10 @@ const getInitialLanguage = (): string => {
   }
 
   // Try browser language fallback
-  const browserLang = navigator.language || "";
-  if (browserLang.toLowerCase().includes("zh")) {
-    return "zh";
-  }
-  if (browserLang.toLowerCase().startsWith("ja")) {
-    return "ja";
+  const browserLanguages = navigator.languages?.length ? navigator.languages : [navigator.language];
+  for (const browserLang of browserLanguages) {
+    const language = findLanguage(browserLang);
+    if (language) return language;
   }
   return "en";
 };
@@ -29,11 +25,7 @@ const getInitialLanguage = (): string => {
 void i18n
   .use(initReactI18next)
   .init({
-    resources: {
-      en: { translation: en },
-      zh: { translation: zh },
-      ja: { translation: ja },
-    },
+    resources: Object.fromEntries(languageCodes.map((code) => [code, { translation: languages[code].translations }])),
     lng: getInitialLanguage(),
     fallbackLng: "en",
     interpolation: {

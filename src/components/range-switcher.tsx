@@ -17,7 +17,7 @@ import { getRangeLabel } from "@/lib/usage-dashboard";
 import dayjs from "dayjs";
 import type { DateRange } from "react-day-picker";
 import { useTranslation } from "react-i18next";
-import { zhCN, enUS } from "date-fns/locale";
+import { getLanguage, languages } from "@/lib/languages";
 
 type RangeSwitcherProps = {
   value: RangeKey;
@@ -38,7 +38,7 @@ const ranges: Array<{ value: RangeKey; label: string }> = [
 
 export function RangeSwitcher({ value, onChange }: RangeSwitcherProps) {
   const { t, i18n } = useTranslation();
-  const currentLocale = i18n.resolvedLanguage?.startsWith("zh") ? zhCN : enUS;
+  const currentLocale = languages[getLanguage(i18n.resolvedLanguage ?? i18n.language)].dateLocale;
   const selectedRange = ranges.find((range) => range.value === value);
   const displayLabel = selectedRange ? t(`ranges.${selectedRange.value}`, { defaultValue: selectedRange.label }) : getRangeLabel(value, t);
 
