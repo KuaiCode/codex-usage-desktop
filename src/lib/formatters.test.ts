@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import i18n from "@/i18n";
-import { formatCompactNumber, formatCurrency, formatNumber, formatPercent } from "./formatters";
+import { formatCompactNumber, formatCurrency, formatCurrencyShort, formatNumber, formatPercent } from "./formatters";
 
 describe("number formatting", () => {
   const originalLanguage = i18n.language;
@@ -24,5 +24,11 @@ describe("number formatting", () => {
     expect(formatPercent(0.125)).toBe(new Intl.NumberFormat("ja-JP", {
       style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1,
     }).format(0.125));
+  });
+
+  it("omits US from Chinese currency amounts", async () => {
+    await i18n.changeLanguage("zh");
+    expect(formatCurrency(12.5)).toBe("$12.50");
+    expect(formatCurrencyShort(12.5)).toBe("$12.50");
   });
 });
