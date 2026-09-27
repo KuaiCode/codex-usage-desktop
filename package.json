@@ -32,6 +32,7 @@
     "test:e2e": "wdio run ./wdio.conf.ts",
     "bump": "node scripts/bump-version.cjs",
     "release": "node scripts/release.cjs",
+    "downloads:trend": "node scripts/release-download-trend.cjs",
     "preversion": "node scripts/preversion.cjs"
   },
   "dependencies": {

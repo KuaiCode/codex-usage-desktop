@@ -9,6 +9,7 @@ src-tauri/gen
 *.db-shm
 *.db-wal
 *.log
+.release-downloads.json
 
 .playwright-cli
 .DS_Store

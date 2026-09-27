@@ -254,6 +254,12 @@ cd src-tauri && cargo test
 
 Packaged builds use `pnpm tauri build`.
 
+### Release download trend
+
+Run `pnpm downloads:trend` to read cumulative download counts for the three installer assets on GitHub Releases. The script saves a snapshot in `.release-downloads.json` at the repository root. Run it regularly to see growth between snapshots. The first run only establishes a baseline; earlier daily downloads cannot be recovered. Set `GITHUB_TOKEN` or `GH_TOKEN` if you need a higher GitHub API rate limit.
+
+These are download counts, not installed users. Windows setup downloads also include app updates.
+
 ## Star History
 
 <a href="https://www.star-history.com/?repos=itvincent-git%2Fcodex-usage-desktop&type=date&legend=top-left">

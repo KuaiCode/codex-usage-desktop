@@ -245,3 +245,9 @@ cd src-tauri && cargo test
 ```
 
 使用 `pnpm tauri build` 构建安装包。
+
+### 查看 Release 下载趋势
+
+运行 `pnpm downloads:trend`，脚本会读取 GitHub Releases 中三个正式安装包的累计下载数，并把快照保存在仓库根目录的 `.release-downloads.json`。以后定期运行同一命令，即可查看两次快照之间的下载增量。首次运行只建立基线，无法还原此前的每日下载量。需要更高的 GitHub API 请求额度时，可设置 `GITHUB_TOKEN` 或 `GH_TOKEN`。
+
+该数字是下载次数，不是安装人数；Windows 安装包同时用于应用更新，因此其下载数也包含更新。
