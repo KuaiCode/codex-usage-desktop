@@ -1,10 +1,15 @@
 import i18n from "@/i18n";
 import { getLanguage, languageCodes, languages } from "@/lib/languages";
 
+const numberFormatter = new Intl.NumberFormat("en-US");
+const compactNumberFormatter = new Intl.NumberFormat("en-US", {
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
+
 const formatters = Object.fromEntries(languageCodes.map((code) => {
   const locale = languages[code].intlLocale;
   return [code, {
-    number: new Intl.NumberFormat(locale),
     currency: new Intl.NumberFormat(locale, {
       style: "currency",
       currency: "USD",
@@ -17,10 +22,6 @@ const formatters = Object.fromEntries(languageCodes.map((code) => {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }),
-    compactNumber: new Intl.NumberFormat(locale, {
-      notation: "compact",
-      maximumFractionDigits: 2,
-    }),
     percent: new Intl.NumberFormat(locale, {
       style: "percent",
       minimumFractionDigits: 1,
@@ -28,10 +29,8 @@ const formatters = Object.fromEntries(languageCodes.map((code) => {
     }),
   }];
 })) as Record<(typeof languageCodes)[number], {
-  number: Intl.NumberFormat;
   currency: Intl.NumberFormat;
   currencyShort: Intl.NumberFormat;
-  compactNumber: Intl.NumberFormat;
   percent: Intl.NumberFormat;
 }>;
 
@@ -40,7 +39,7 @@ function currentFormatters() {
 }
 
 export function formatNumber(value: number) {
-  return currentFormatters().number.format(Math.round(value));
+  return numberFormatter.format(Math.round(value));
 }
 
 export function formatCompactNumber(value: number) {
@@ -48,7 +47,7 @@ export function formatCompactNumber(value: number) {
     return formatNumber(value);
   }
 
-  return currentFormatters().compactNumber.format(value);
+  return compactNumberFormatter.format(value);
 }
 
 export function formatCurrency(value: number) {

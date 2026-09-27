@@ -2,26 +2,22 @@ import { afterEach, describe, expect, it } from "vitest";
 import i18n from "@/i18n";
 import { formatCompactNumber, formatCurrency, formatNumber, formatPercent } from "./formatters";
 
-describe("localized number formatting", () => {
+describe("number formatting", () => {
   const originalLanguage = i18n.language;
 
   afterEach(async () => {
     await i18n.changeLanguage(originalLanguage);
   });
 
-  it("uses the active language while keeping costs in USD", async () => {
-    await i18n.changeLanguage("en");
-    expect(formatNumber(1234567)).toBe(new Intl.NumberFormat("en-US").format(1234567));
-    const englishCompact = formatCompactNumber(1_000_000);
+  it.each(["en", "zh", "ja"])("uses English token numbers in %s", async (language) => {
+    await i18n.changeLanguage(language);
+    expect(formatNumber(1_234_567)).toBe("1,234,567");
+    expect(formatCompactNumber(123_456)).toBe("123,456");
+    expect(formatCompactNumber(1_234_567)).toBe("1.23M");
+  });
 
-    await i18n.changeLanguage("zh");
-    expect(formatCompactNumber(1_000_000)).toBe(new Intl.NumberFormat("zh-CN", {
-      notation: "compact", maximumFractionDigits: 2,
-    }).format(1_000_000));
-    expect(formatCompactNumber(1_000_000)).not.toBe(englishCompact);
-
+  it("keeps costs and percentages localized", async () => {
     await i18n.changeLanguage("ja");
-    expect(formatNumber(1234567)).toBe(new Intl.NumberFormat("ja-JP").format(1234567));
     expect(formatCurrency(12.5)).toBe(new Intl.NumberFormat("ja-JP", {
       style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4,
     }).format(12.5));
