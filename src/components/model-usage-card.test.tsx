@@ -120,18 +120,34 @@ describe("model analytics", () => {
     await i18n.changeLanguage("en");
   });
 
-  it("shows quota estimates with rounded-reading ranges and sample coverage", () => {
+  it("compares quota estimates on a shared scale and expands the existing details", async () => {
+    const user = userEvent.setup();
     render(<ModelUsageCard models={[model("gpt-a", 2_000_000, {
       fiveHourQuota: {
-        percent: 4, lowerPercent: 2, upperPercent: 6,
+        percent: 125, lowerPercent: 120, upperPercent: 130,
         percentPerMillionTokens: 2, lowerPercentPerMillionTokens: 1, upperPercentPerMillionTokens: 3,
         sampledTokens: 1_000_000, samples: 1,
       },
+    }), model("gpt-b", 1_000_000, {
+      weeklyQuota: {
+        percent: 25, lowerPercent: 20, upperPercent: 30,
+        percentPerMillionTokens: 25, lowerPercentPerMillionTokens: 20, upperPercentPerMillionTokens: 30,
+        sampledTokens: 1_000_000, samples: 2,
+      },
     })]} />);
     const row = document.querySelector('[data-quota-model="gpt-a"]') as HTMLElement;
-    expect(within(row).getByText("Total ≈ 4.0%")).toBeInTheDocument();
+    expect(screen.getByText("Shared scale: 0–125.0%")).toBeInTheDocument();
+    expect(within(row).getByRole("img", { name: "5-hour quota: 125.0%" }).firstElementChild).toHaveStyle({ width: "100%" });
+    expect(within(document.querySelector('[data-quota-model="gpt-b"]') as HTMLElement).getByRole("img", { name: "Weekly quota: 25.0%" }).firstElementChild).toHaveStyle({ width: "20%" });
+    expect(within(row).getByRole("img", { name: "Weekly quota: No attributable snapshots" })).toBeInTheDocument();
+    expect(row).not.toHaveAttribute("open");
+    await user.click(within(row).getByText("gpt-a"));
+    expect(row).toHaveAttribute("open");
+    expect(within(row).getByText("Total ≈ 125.0%")).toBeVisible();
     expect(within(row).getByText("Per 1M tokens ≈ 2.0%")).toBeInTheDocument();
     expect(within(row).getByText("Sample: 1,000,000 tokens · snapshot groups: 1")).toBeInTheDocument();
     expect(within(row).getByText("No attributable snapshots")).toBeInTheDocument();
+    await user.click(within(row).getByText("gpt-a"));
+    expect(row).not.toHaveAttribute("open");
   });
 });

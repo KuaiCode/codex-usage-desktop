@@ -319,6 +319,7 @@
       "model": "Model",
       "five_hour": "5-hour quota",
       "weekly": "Weekly quota",
+      "scale": "Shared scale: 0–{{max}}",
       "total": "Total ≈ {{value}}",
       "per_million": "Per 1M tokens ≈ {{value}}",
       "range": "Reading-precision range {{lower}}–{{upper}}",

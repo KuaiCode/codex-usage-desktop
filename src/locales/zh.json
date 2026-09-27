@@ -319,6 +319,7 @@
       "model": "模型",
       "five_hour": "5 小时限额",
       "weekly": "周限额",
+      "scale": "统一刻度：0–{{max}}",
       "total": "总计约 {{value}}",
       "per_million": "每百万 Token 约 {{value}}",
       "range": "读数误差范围 {{lower}}–{{upper}}",

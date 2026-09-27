@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,6 +61,16 @@ function QuotaEstimate({ value }: { value: ModelQuotaEstimate | null | undefined
   </div>;
 }
 
+function QuotaBar({ value, maxPercent, color, label }: { value: ModelQuotaEstimate | null | undefined; maxPercent: number; color: string; label: string }) {
+  const { t } = useTranslation();
+  return <div className="grid grid-cols-[minmax(0,1fr)_5rem] items-center gap-3 text-xs">
+    <div role="img" aria-label={`${label}: ${value ? formatPercent(value.percent / 100) : t("models.quota.no_sample")}`} className="h-3 overflow-hidden rounded-full bg-muted">
+      {value ? <div className="h-full rounded-full" style={{ width: `${Math.max(0, value.percent) / maxPercent * 100}%`, backgroundColor: color }} /> : null}
+    </div>
+    <span className="text-right font-medium tabular-nums">{value ? formatPercent(value.percent / 100) : "—"}</span>
+  </div>;
+}
+
 export function ModelUsageCard({ models }: ModelUsageCardProps) {
   const { t } = useTranslation();
   const [sort, setSort] = useState<ModelSort>("tokens");
@@ -84,6 +95,7 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
     ? totals.costUSD / totals.totalTokens * 1_000_000
     : null;
   const unavailable = t("models.pricing_unavailable");
+  const quotaMaxPercent = Math.max(100, Math.ceil(Math.max(...models.flatMap((model) => [model.fiveHourQuota?.percent ?? 0, model.weeklyQuota?.percent ?? 0])) / 25) * 25);
 
   if (models.length === 0) {
     return <Card><CardContent className="py-14 text-center text-sm text-muted-foreground">{t("models.no_data")}</CardContent></Card>;
@@ -107,11 +119,27 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
 
       <Card data-testid="model-quota-estimates">
         <CardHeader><CardTitle>{t("models.quota.title")}</CardTitle><CardDescription>{t("models.quota.subtitle")}</CardDescription></CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-sm">
-            <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="pb-3 pr-4">{t("models.quota.model")}</th><th className="px-4 pb-3">{t("models.quota.five_hour")}</th><th className="px-4 pb-3">{t("models.quota.weekly")}</th></tr></thead>
-            <tbody>{sortedModels.map((model) => <tr key={model.model} data-quota-model={model.model} className="border-b last:border-0"><th scope="row" className="py-4 pr-4 text-left font-medium">{model.model}</th><td className="px-4 py-4"><QuotaEstimate value={model.fiveHourQuota} /></td><td className="px-4 py-4"><QuotaEstimate value={model.weeklyQuota} /></td></tr>)}</tbody>
-          </table></div>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-muted-foreground">
+            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-sky-500" />{t("models.quota.five_hour")}</span>
+            <span><i className="mr-1.5 inline-block h-2.5 w-2.5 rounded-full bg-violet-500" />{t("models.quota.weekly")}</span>
+            <span className="sm:ml-auto">{t("models.quota.scale", { max: formatPercent(quotaMaxPercent / 100) })}</span>
+          </div>
+          <div className="divide-y divide-border/70">
+            {sortedModels.map((model) => <details key={model.model} data-quota-model={model.model} className="group">
+              <summary className="grid cursor-pointer list-none gap-3 py-4 focus-visible:rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[minmax(10rem,15rem)_minmax(0,1fr)] sm:items-center [&::-webkit-details-marker]:hidden">
+                <span className="flex min-w-0 items-center gap-2 font-medium"><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /><span className="truncate" title={model.model}>{model.model}</span></span>
+                <span className="grid gap-2">
+                  <QuotaBar value={model.fiveHourQuota} maxPercent={quotaMaxPercent} color="#0ea5e9" label={t("models.quota.five_hour")} />
+                  <QuotaBar value={model.weeklyQuota} maxPercent={quotaMaxPercent} color="#8b5cf6" label={t("models.quota.weekly")} />
+                </span>
+              </summary>
+              <div data-quota-details className="grid gap-4 rounded-md bg-muted/40 p-4 text-sm sm:ml-[15rem] sm:grid-cols-2">
+                <div><h4 className="mb-2 font-medium">{t("models.quota.five_hour")}</h4><QuotaEstimate value={model.fiveHourQuota} /></div>
+                <div><h4 className="mb-2 font-medium">{t("models.quota.weekly")}</h4><QuotaEstimate value={model.weeklyQuota} /></div>
+              </div>
+            </details>)}
+          </div>
         </CardContent>
       </Card>
 

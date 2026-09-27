@@ -323,6 +323,7 @@
       "model": "モデル",
       "five_hour": "5時間制限",
       "weekly": "週間制限",
+      "scale": "共通目盛り：0–{{max}}",
       "total": "合計 約 {{value}}",
       "per_million": "100万トークンあたり 約 {{value}}",
       "range": "表示精度による範囲 {{lower}}–{{upper}}",

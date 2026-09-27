@@ -37,7 +37,10 @@ describe("Codex Usage Desktop page", () => {
     await $('[data-testid="models-nav-tab"]').click();
     const quotaEstimates = $('[data-testid="model-quota-estimates"]');
     await quotaEstimates.waitForDisplayed({ timeout: 15_000 });
-    await expect(quotaEstimates.$("thead")).toBeDisplayed();
+    const quotaModel = quotaEstimates.$("[data-quota-model]");
+    await expect(quotaModel.$("summary")).toBeDisplayed();
+    await quotaModel.$("summary").click();
+    await expect(quotaModel.$("[data-quota-details]")).toBeDisplayed();
     await $('[data-testid="models-catalog-tab"]').click();
 
     const catalog = $('[data-testid="pricing-catalog"]');
