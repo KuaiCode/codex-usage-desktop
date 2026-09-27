@@ -313,6 +313,18 @@
     "no_data": "在所选时间范围内没有模型活动。",
     "other": "其他",
     "pricing_unavailable": "暂无定价",
+    "quota": {
+      "title": "模型限额消耗估算",
+      "subtitle": "根据同一模型的历史会话快照估算所选时段总消耗和每百万 Token 消耗。快照只显示整数百分比，每组读数按 ±1 个百分点计入区间；其他会话同时运行时可能影响归因。",
+      "model": "模型",
+      "five_hour": "5 小时限额",
+      "weekly": "周限额",
+      "total": "总计约 {{value}}",
+      "per_million": "每百万 Token 约 {{value}}",
+      "range": "读数误差范围 {{lower}}–{{upper}}",
+      "sample": "样本 {{tokens}} Token · {{count}} 组快照",
+      "no_sample": "暂无可归因快照"
+    },
     "of_usage": "用量占比",
     "of_cost": "成本占比",
     "summary": {

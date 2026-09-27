@@ -313,6 +313,18 @@
     "no_data": "No model activity in this window.",
     "other": "Other",
     "pricing_unavailable": "Pricing unavailable",
+    "quota": {
+      "title": "Estimated model quota consumption",
+      "subtitle": "Estimated total for the selected period and per million tokens from single-model session snapshots. Each integer-percent snapshot pair adds ±1 percentage point of uncertainty; concurrent sessions may affect attribution.",
+      "model": "Model",
+      "five_hour": "5-hour quota",
+      "weekly": "Weekly quota",
+      "total": "Total ≈ {{value}}",
+      "per_million": "Per 1M tokens ≈ {{value}}",
+      "range": "Reading-precision range {{lower}}–{{upper}}",
+      "sample": "Sample: {{tokens}} tokens · snapshot groups: {{count}}",
+      "no_sample": "No attributable snapshots"
+    },
     "of_usage": "of usage",
     "of_cost": "of cost",
     "summary": {

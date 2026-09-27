@@ -3,8 +3,8 @@ use crate::{
     date::{date_key_in_timezone, resolve_app_timezone},
     db::{
         delete_missing_daily_rows, delete_missing_session_file_rollups, query_session_file_rollup,
-        record_scan_run, upsert_daily_rows, upsert_session_file_rollups, SessionFileRollup,
-        SessionQuotaRollup,
+        record_scan_run, upsert_daily_rows, upsert_session_file_rollups, ModelQuotaSample,
+        SessionFileRollup, SessionQuotaRollup,
     },
     pricing::{calculate_cost_usd, PricingSource},
     types::{
@@ -264,6 +264,7 @@ fn load_session_file_with_quota(
     let mut prompt_title = None;
     let mut has_turn_context = false;
     let mut quota_snapshots = Vec::new();
+    let event_start = events.len();
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -379,7 +380,7 @@ fn load_session_file_with_quota(
 
     Ok((
         prompt_title.unwrap_or_default(),
-        build_quota_rollup(&quota_snapshots, timezone),
+        build_quota_rollup(&quota_snapshots, &events[event_start..], timezone),
     ))
 }
 
@@ -465,7 +466,11 @@ fn format_reset_at(value: &Value) -> Option<String> {
         .map(|timestamp| timestamp.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }
 
-fn build_quota_rollup(snapshots: &[QuotaSnapshot], timezone: &str) -> SessionQuotaRollup {
+fn build_quota_rollup(
+    snapshots: &[QuotaSnapshot],
+    events: &[UsageEvent],
+    timezone: &str,
+) -> SessionQuotaRollup {
     let mut rollup = SessionQuotaRollup::default();
     for window_minutes in [300, 10080] {
         let mut matching = snapshots
@@ -484,6 +489,42 @@ fn build_quota_rollup(snapshots: &[QuotaSnapshot], timezone: &str) -> SessionQuo
             rollup.session.weekly = windows;
             for (date, windows) in daily {
                 rollup.daily.entry(date).or_default().weekly = windows;
+            }
+        }
+    }
+    for (date, usage) in &rollup.daily {
+        for window in usage.five_hour.iter().chain(&usage.weekly) {
+            let (Ok(start), Ok(end)) = (
+                DateTime::parse_from_rfc3339(&window.observed_start_at),
+                DateTime::parse_from_rfc3339(&window.observed_end_at),
+            ) else {
+                continue;
+            };
+            let matching = events
+                .iter()
+                .filter(|event| event.timestamp > start && event.timestamp <= end);
+            let mut model = None;
+            let mut tokens = 0;
+            let mut mixed = false;
+            for event in matching {
+                if event.is_fallback_model || model.is_some_and(|name| name != event.model.as_str())
+                {
+                    mixed = true;
+                    break;
+                }
+                model = Some(event.model.as_str());
+                tokens += event.usage.total_tokens;
+            }
+            if !mixed && tokens > 0 {
+                rollup.model_samples.push(ModelQuotaSample {
+                    date: date.clone(),
+                    model: model.expect("positive token count has a model").to_string(),
+                    window_minutes: window.window_minutes,
+                    observed_start_at: window.observed_start_at.clone(),
+                    observed_end_at: window.observed_end_at.clone(),
+                    tokens,
+                    observed_delta_percent: window.observed_delta_percent,
+                });
             }
         }
     }
@@ -1467,12 +1508,12 @@ mod tests {
             },
         ];
 
-        let duplicate = build_quota_rollup(&snapshots, "UTC");
+        let duplicate = build_quota_rollup(&snapshots, &[], "UTC");
         assert!(duplicate.session.five_hour[0].below_resolution);
         assert_eq!(duplicate.session.five_hour[0].observed_delta_percent, 0.0);
         assert!(duplicate.session.weekly.is_empty());
 
-        let single = build_quota_rollup(&snapshots[..1], "UTC");
+        let single = build_quota_rollup(&snapshots[..1], &[], "UTC");
         assert!(single.session.five_hour.is_empty());
     }
 
@@ -1492,7 +1533,7 @@ mod tests {
             snapshot("2026-07-01T15:05:00Z", 4.0, "2026-07-01T20:00:02Z"),
         ];
 
-        let quota = build_quota_rollup(&snapshots, "UTC");
+        let quota = build_quota_rollup(&snapshots, &[], "UTC");
 
         assert_eq!(quota.session.five_hour.len(), 2);
         assert_eq!(quota.session.five_hour[0].observed_delta_percent, 2.0);
@@ -1523,13 +1564,69 @@ mod tests {
             },
         ];
 
-        let quota = build_quota_rollup(&snapshots, "Asia/Shanghai");
+        let quota = build_quota_rollup(&snapshots, &[], "Asia/Shanghai");
 
         assert_eq!(
             quota.daily["2026-07-02"].weekly[0].observed_delta_percent,
             3.0
         );
         assert!(!quota.daily.contains_key("2026-07-01"));
+    }
+
+    #[test]
+    fn model_quota_samples_require_one_known_model_between_snapshots() {
+        let timestamp = |value: &str| value.parse::<DateTime<Utc>>().unwrap();
+        let snapshot = |time: &str, percent: f64| QuotaSnapshot {
+            timestamp: timestamp(time),
+            window_minutes: 300,
+            used_percent: percent,
+            resets_at: None,
+        };
+        let event = |time: &str, model: &str, fallback: bool| UsageEvent {
+            timestamp: timestamp(time),
+            model: model.to_string(),
+            project_path: "test".to_string(),
+            usage: ModelUsage {
+                total_tokens: 250_000,
+                ..ModelUsage::default()
+            },
+            is_fallback_model: fallback,
+        };
+        let snapshots = vec![
+            snapshot("2026-07-01T10:00:00Z", 10.0),
+            snapshot("2026-07-01T10:05:00Z", 10.0),
+            snapshot("2026-07-01T10:10:00Z", 12.0),
+            snapshot("2026-07-01T15:00:00Z", 1.0),
+            snapshot("2026-07-01T15:05:00Z", 3.0),
+        ];
+        let events = vec![
+            event("2026-07-01T10:00:00Z", "earlier", false),
+            event("2026-07-01T10:05:00Z", "gpt-a", false),
+            event("2026-07-01T10:10:00Z", "gpt-a", false),
+            event("2026-07-01T15:05:00Z", "gpt-b", false),
+        ];
+        let quota = build_quota_rollup(&snapshots, &events, "UTC");
+        assert_eq!(quota.model_samples.len(), 2);
+        assert_eq!(quota.model_samples[0].model, "gpt-a");
+        assert_eq!(quota.model_samples[0].tokens, 500_000);
+        assert_eq!(quota.model_samples[0].observed_delta_percent, 2.0);
+        assert_eq!(quota.model_samples[1].model, "gpt-b");
+
+        let mixed = build_quota_rollup(
+            &snapshots[..3],
+            &[
+                events[1].clone(),
+                event("2026-07-01T10:10:00Z", "gpt-b", false),
+            ],
+            "UTC",
+        );
+        assert!(mixed.model_samples.is_empty());
+        let fallback = build_quota_rollup(
+            &snapshots[..3],
+            &[event("2026-07-01T10:05:00Z", "gpt-a", true)],
+            "UTC",
+        );
+        assert!(fallback.model_samples.is_empty());
     }
 
     fn tempfile_dir() -> PathBuf {

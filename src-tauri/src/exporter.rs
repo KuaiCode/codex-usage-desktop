@@ -424,6 +424,8 @@ mod tests {
                 cached_input_cost_per_million_tokens: Some(0.125),
                 output_cost_per_million_tokens: Some(10.0),
                 effective_cost_per_million_tokens: Some(3.296875),
+                five_hour_quota: None,
+                weekly_quota: None,
             }],
             projects: vec![OverviewProjectRow {
                 project: "/Users/vincent/Documents/Develop/github/codex-usage-desktop".to_string(),

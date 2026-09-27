@@ -35,6 +35,9 @@ describe("Codex Usage Desktop page", () => {
 
   it("opens the pricing catalog and refreshes without leaving the app unusable", async () => {
     await $('[data-testid="models-nav-tab"]').click();
+    const quotaEstimates = $('[data-testid="model-quota-estimates"]');
+    await quotaEstimates.waitForDisplayed({ timeout: 15_000 });
+    await expect(quotaEstimates.$("thead")).toBeDisplayed();
     await $('[data-testid="models-catalog-tab"]').click();
 
     const catalog = $('[data-testid="pricing-catalog"]');

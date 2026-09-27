@@ -1,11 +1,14 @@
 use crate::{
     date::{date_key_in_timezone, list_date_keys, resolve_app_timezone, shift_date_key},
-    db::{query_daily_quota_percents, query_daily_rows, query_latest_update_at},
+    db::{
+        query_daily_quota_percents, query_daily_rows, query_latest_update_at,
+        query_model_quota_samples, ModelQuotaAggregate,
+    },
     pricing::{calculate_cost_usd, PricingSource},
     types::{
-        ModelUsage, MonthlyUsageResponse, MonthlyUsageRow, OverviewDailyRow, OverviewModelRow,
-        OverviewProjectRow, OverviewResponse, OverviewTotals, ProjectAnalyticsModelRow,
-        ProjectAnalyticsResponse, ProjectUsage,
+        ModelQuotaEstimate, ModelUsage, MonthlyUsageResponse, MonthlyUsageRow, OverviewDailyRow,
+        OverviewModelRow, OverviewProjectRow, OverviewResponse, OverviewTotals,
+        ProjectAnalyticsModelRow, ProjectAnalyticsResponse, ProjectUsage,
     },
 };
 use chrono::{Datelike, NaiveDate, Utc};
@@ -129,6 +132,15 @@ pub fn get_overview(
         .into_iter()
         .map(|(model, usage)| overview_model_row(model, usage, pricing_source))
         .collect::<Vec<_>>();
+    let quota_samples = query_model_quota_samples(db, &start_date, &end_date)?;
+    for row in &mut models {
+        row.five_hour_quota = quota_samples
+            .get(&(row.model.clone(), 300))
+            .and_then(|samples| estimate_model_quota(samples, row.total_tokens));
+        row.weekly_quota = quota_samples
+            .get(&(row.model.clone(), 10080))
+            .and_then(|samples| estimate_model_quota(samples, row.total_tokens));
+    }
     models.sort_by(|a, b| {
         b.total_tokens
             .cmp(&a.total_tokens)
@@ -337,6 +349,60 @@ fn overview_model_row(
         } else {
             None
         },
+        five_hour_quota: None,
+        weekly_quota: None,
+    }
+}
+
+fn estimate_model_quota(
+    samples: &ModelQuotaAggregate,
+    total_tokens: i64,
+) -> Option<ModelQuotaEstimate> {
+    if samples.tokens <= 0 || total_tokens <= 0 {
+        return None;
+    }
+    let rate = 1_000_000.0 / samples.tokens as f64;
+    let lower = (samples.observed_percent - samples.samples as f64).max(0.0);
+    let upper = samples.observed_percent + samples.samples as f64;
+    let scale = total_tokens as f64 / samples.tokens as f64;
+    Some(ModelQuotaEstimate {
+        percent: samples.observed_percent * scale,
+        lower_percent: lower * scale,
+        upper_percent: upper * scale,
+        percent_per_million_tokens: samples.observed_percent * rate,
+        lower_percent_per_million_tokens: lower * rate,
+        upper_percent_per_million_tokens: upper * rate,
+        sampled_tokens: samples.tokens,
+        samples: samples.samples,
+    })
+}
+
+#[cfg(test)]
+mod quota_estimate_tests {
+    use super::*;
+
+    #[test]
+    fn includes_integer_snapshot_uncertainty_and_zero_deltas() {
+        let samples = ModelQuotaAggregate {
+            tokens: 1_000_000,
+            observed_percent: 2.0,
+            samples: 2,
+        };
+        let estimate = estimate_model_quota(&samples, 2_000_000).unwrap();
+        assert_eq!(estimate.percent, 4.0);
+        assert_eq!(estimate.lower_percent, 0.0);
+        assert_eq!(estimate.upper_percent, 8.0);
+        assert_eq!(estimate.percent_per_million_tokens, 2.0);
+        assert_eq!(estimate.upper_percent_per_million_tokens, 4.0);
+
+        let below_resolution = ModelQuotaAggregate {
+            tokens: 100_000,
+            observed_percent: 0.0,
+            samples: 1,
+        };
+        let estimate = estimate_model_quota(&below_resolution, 100_000).unwrap();
+        assert_eq!(estimate.lower_percent, 0.0);
+        assert_eq!(estimate.upper_percent, 1.0);
     }
 }
 

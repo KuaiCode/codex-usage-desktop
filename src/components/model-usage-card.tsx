@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { OverviewResponse } from "@/lib/api";
+import type { ModelQuotaEstimate, OverviewResponse } from "@/lib/api";
 import {
   buildDonutData,
   modelPageColors,
@@ -45,6 +45,19 @@ function Price({ value, tone, unavailable }: { value: number | null; tone: Price
       {value == null ? unavailable : formatCurrency(value)}
     </span>
   );
+}
+
+function QuotaEstimate({ value }: { value: ModelQuotaEstimate | null | undefined }) {
+  const { t } = useTranslation();
+  if (!value) return <span className="text-muted-foreground">{t("models.quota.no_sample")}</span>;
+  const percent = (amount: number) => formatPercent(amount / 100);
+  return <div className="space-y-1 tabular-nums">
+    <p className="font-semibold">{t("models.quota.total", { value: percent(value.percent) })}</p>
+    <p className="text-xs text-muted-foreground">{t("models.quota.range", { lower: percent(value.lowerPercent), upper: percent(value.upperPercent) })}</p>
+    <p>{t("models.quota.per_million", { value: percent(value.percentPerMillionTokens) })}</p>
+    <p className="text-xs text-muted-foreground">{t("models.quota.range", { lower: percent(value.lowerPercentPerMillionTokens), upper: percent(value.upperPercentPerMillionTokens) })}</p>
+    <p className="text-xs text-muted-foreground">{t("models.quota.sample", { tokens: formatNumber(value.sampledTokens), count: value.samples })}</p>
+  </div>;
 }
 
 export function ModelUsageCard({ models }: ModelUsageCardProps) {
@@ -91,6 +104,16 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
           <Card key={label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-bold tabular-nums text-foreground">{value}</p></CardContent></Card>
         ))}
       </div>
+
+      <Card data-testid="model-quota-estimates">
+        <CardHeader><CardTitle>{t("models.quota.title")}</CardTitle><CardDescription>{t("models.quota.subtitle")}</CardDescription></CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-sm">
+            <thead><tr className="border-b text-left text-xs text-muted-foreground"><th className="pb-3 pr-4">{t("models.quota.model")}</th><th className="px-4 pb-3">{t("models.quota.five_hour")}</th><th className="px-4 pb-3">{t("models.quota.weekly")}</th></tr></thead>
+            <tbody>{sortedModels.map((model) => <tr key={model.model} data-quota-model={model.model} className="border-b last:border-0"><th scope="row" className="py-4 pr-4 text-left font-medium">{model.model}</th><td className="px-4 py-4"><QuotaEstimate value={model.fiveHourQuota} /></td><td className="px-4 py-4"><QuotaEstimate value={model.weeklyQuota} /></td></tr>)}</tbody>
+          </table></div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

@@ -43,6 +43,8 @@ export type OverviewResponse = {
     cachedInputCostPerMillionTokens: number | null;
     outputCostPerMillionTokens: number | null;
     effectiveCostPerMillionTokens: number | null;
+    fiveHourQuota?: ModelQuotaEstimate | null;
+    weeklyQuota?: ModelQuotaEstimate | null;
   }>;
   projects: Array<{
     project: string;
@@ -57,6 +59,17 @@ export type OverviewResponse = {
     totalTokens: number;
     costUSD: number;
   }>;
+};
+
+export type ModelQuotaEstimate = {
+  percent: number;
+  lowerPercent: number;
+  upperPercent: number;
+  percentPerMillionTokens: number;
+  lowerPercentPerMillionTokens: number;
+  upperPercentPerMillionTokens: number;
+  sampledTokens: number;
+  samples: number;
 };
 
 export type ProjectAnalyticsResponse = {

@@ -108,7 +108,7 @@ describe("model analytics", () => {
     const user = userEvent.setup();
     screen.getByRole("combobox", { name: "Sort descending" }).focus();
     await user.keyboard("[Enter][ArrowDown][Enter]");
-    expect(document.querySelector("tbody tr")?.getAttribute("data-model-row")).toBe("alpha");
+    expect(document.querySelector("tr[data-model-row]")?.getAttribute("data-model-row")).toBe("alpha");
     expect(document.querySelector("[data-model-row='beta']")).toHaveAttribute("data-model-color", colors.get("beta"));
   });
 
@@ -118,5 +118,20 @@ describe("model analytics", () => {
     expect(screen.getByRole("heading", { name: "Token 构成" })).toBeInTheDocument();
     expect(screen.getByText("模型比较")).toBeInTheDocument();
     await i18n.changeLanguage("en");
+  });
+
+  it("shows quota estimates with rounded-reading ranges and sample coverage", () => {
+    render(<ModelUsageCard models={[model("gpt-a", 2_000_000, {
+      fiveHourQuota: {
+        percent: 4, lowerPercent: 2, upperPercent: 6,
+        percentPerMillionTokens: 2, lowerPercentPerMillionTokens: 1, upperPercentPerMillionTokens: 3,
+        sampledTokens: 1_000_000, samples: 1,
+      },
+    })]} />);
+    const row = document.querySelector('[data-quota-model="gpt-a"]') as HTMLElement;
+    expect(within(row).getByText("Total ≈ 4.0%")).toBeInTheDocument();
+    expect(within(row).getByText("Per 1M tokens ≈ 2.0%")).toBeInTheDocument();
+    expect(within(row).getByText("Sample: 1,000,000 tokens · snapshot groups: 1")).toBeInTheDocument();
+    expect(within(row).getByText("No attributable snapshots")).toBeInTheDocument();
   });
 });
