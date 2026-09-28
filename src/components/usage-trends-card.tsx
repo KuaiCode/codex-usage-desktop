@@ -79,9 +79,9 @@ export const UsageTrendTooltip = ({ active, payload, label, t, compact = false }
             <span className="font-mono font-medium text-foreground">{formatNumber(output)}</span>
           </div> : null}
 
-          <div className={cn("mt-1.5 flex items-center justify-between gap-4 border-t border-border/60 pt-1.5 font-semibold", compact ? "text-amber-600 dark:text-amber-400" : "text-primary")}>
+          <div className="mt-1.5 flex items-center justify-between gap-4 border-t border-border/60 pt-1.5 font-semibold text-primary">
             <span className="flex items-center gap-1.5">
-              <span className={cn("h-2 w-2 rounded-full", compact ? "bg-amber-600 dark:bg-amber-400" : "bg-primary")} />
+              <span className="h-2 w-2 rounded-full bg-primary" />
               {t("common.cost", { defaultValue: "Cost" })}
             </span>
             <span className="font-mono">{formatCurrencyShort(cost)}</span>
@@ -149,7 +149,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
         isFullscreen && "w-full border-border bg-surface hover:translate-y-0 hover:shadow-none",
       )}
     >
-      {compact ? <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground"><span className="sr-only">{title}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-blue-600" />{t("trends.total_tokens")}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-amber-600 dark:bg-amber-400" />{t("common.cost")}</span></div> : <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
+      {compact ? <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground"><span className="sr-only">{title}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-blue-600/75" />{t("trends.total_tokens")}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-primary" />{t("common.cost")}</span></div> : <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
         {title ? <span className="mr-auto text-xs font-semibold text-foreground">{title}</span> : null}
         <span className="sr-only">{t("trends.total_token_trend", { defaultValue: "Total Token Trend" })}</span>
         <span className="sr-only">{t("trends.cost_trend", { defaultValue: "Cost Trend" })}</span>
@@ -246,7 +246,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
               {compact ? <Bar
                 yAxisId="tokens"
                 dataKey="totalTokens"
-                fill="rgb(37 99 235)"
+                fill="rgb(37 99 235 / 0.72)"
                 maxBarSize={20}
                 radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
@@ -288,7 +288,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 type="monotone"
                 dataKey="costUSD"
                 name="Cost (USD)"
-                stroke={compact ? "rgb(217 119 6)" : "rgb(var(--primary))"}
+                stroke="rgb(var(--primary))"
                 strokeWidth={compact ? 2.5 : 2.75}
                 dot={compact ? false : { r: 2.8, strokeWidth: 1.5, fill: "rgb(var(--surface))" }}
                 activeDot={compact ? { r: 3 } : { r: 5.5, strokeWidth: 2.25, fill: "rgb(var(--surface))" }}
