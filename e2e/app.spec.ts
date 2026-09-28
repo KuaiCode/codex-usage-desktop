@@ -41,14 +41,15 @@ describe("Codex Usage Desktop page", () => {
 
     const projectRows = await $$('[data-testid="project-comparison"] tbody tr[role="button"]');
     const trends = await $$('[data-project-trend]');
-    expect(trends.length).toBe(projectRows.length);
-    if (projectRows.length > 0) {
-      expect(await projectRows[0].$$('td')).toHaveLength(3);
+    const projectRowCount = await projectRows.length;
+    expect(await trends.length).toBe(projectRowCount);
+    if (projectRowCount > 0) {
+      await expect(projectRows[0].$$('td')).toBeElementsArrayOfSize(3);
       await expect(projectRows[0].$('td:nth-child(2) [data-testid="usage-trends-card"]')).toBeDisplayed();
       const usageCell = projectRows[0].$('td:nth-child(3)');
       await expect(usageCell.$('[data-cost-tone]')).toBeExisting();
       await expect(usageCell.$('dl')).toBeDisplayed();
-      expect(await usageCell.$$('dl > div')).toHaveLength(3);
+      await expect(usageCell.$$('dl > div')).toBeElementsArrayOfSize(3);
       await expect(trends[0].$('[data-testid="usage-trends-card"]')).toBeDisplayed();
     }
   }).timeout(180_000);
