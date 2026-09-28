@@ -1,4 +1,8 @@
 {
+  "3.8.0": {
+    "zh": "- feat(projects): show daily usage trends for each project\n- feat(projects): compact trends into comparison rows\n- fix(projects): improve compact trend chart visibility\n- fix(projects): align compact trend colors with dashboard\n- fix(projects): match compact chart colors to reference\n- feat(projects): simplify usage comparison rows",
+    "en": "- feat(projects): show daily usage trends for each project\n- feat(projects): compact trends into comparison rows\n- fix(projects): improve compact trend chart visibility\n- fix(projects): align compact trend colors with dashboard\n- fix(projects): match compact chart colors to reference\n- feat(projects): simplify usage comparison rows"
+  },
   "3.7.0": {
     "zh": "- fix: retry Codex limits after startup network errors\n- feat(i18n): centralize language configuration and localize formats\n- fix: use English number formatting for token counts\n- fix: omit US prefix from Chinese currency amounts\n- feat: add GitHub release download trend script\n- feat(models): estimate quota consumption from session snapshots\n- feat(models): compare quota estimates with expandable charts\n- feat(models): chart per-million quota consumption",
     "en": "- fix: retry Codex limits after startup network errors\n- feat(i18n): centralize language configuration and localize formats\n- fix: use English number formatting for token counts\n- fix: omit US prefix from Chinese currency amounts\n- feat: add GitHub release download trend script\n- feat(models): estimate quota consumption from session snapshots\n- feat(models): compare quota estimates with expandable charts\n- feat(models): chart per-million quota consumption"
