@@ -430,6 +430,7 @@
     },
     "values": {
       "input": "入力",
+      "uncached": "非キャッシュ",
       "cached": "キャッシュされた",
       "output": "出力"
     },

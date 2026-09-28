@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { OverviewResponse } from "@/lib/api";
-import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
+import { formatCurrency, formatCurrencyShort, formatNumber, formatPercent } from "@/lib/formatters";
 import {
   defaultProjectSortDirection,
   isPositivePeak,
@@ -32,6 +32,7 @@ const costToneClasses: Record<CostTone, string> = {
   medium: "bg-amber-500",
   high: "bg-rose-500",
 };
+const compactTokenFormatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
 
 function Peak({ show, label }: { show: boolean; label: string }) {
   return show ? <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">{label}</span> : null;
@@ -117,14 +118,14 @@ export function ProjectUsageCard({ projects, projectDaily, onProjectClick }: Pro
                     /> : null}
                   </td>
                   <td className="border-b border-border/70 py-3 pl-3 tabular-nums">
-                    <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 font-semibold text-foreground">{formatNumber(project.totalTokens)}<Peak show={isPositivePeak(project.totalTokens, peaks.totalTokens)} label={t("projects.highest")} /></span><span className="text-[10px] text-muted-foreground">{t("projects.relative_peak", { percent: Math.round(width) })}</span></div>
+                    <div className="flex items-center justify-between gap-2"><span className="flex items-center gap-1.5 font-semibold text-foreground" title={formatNumber(project.totalTokens)}>{compactTokenFormatter.format(project.totalTokens)}<Peak show={isPositivePeak(project.totalTokens, peaks.totalTokens)} label={t("projects.highest")} /></span>{!isPositivePeak(project.totalTokens, peaks.totalTokens) ? <span className="text-[10px] text-muted-foreground">{t("projects.relative_peak", { percent: Math.round(width) })}</span> : null}</div>
                     <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted"><div className="flex h-full overflow-hidden rounded-full" style={{ width: `${width}%` }} role="img" aria-label={t("projects.bar_label", { total: formatNumber(project.totalTokens), input: formatNumber(project.inputTokens), cached: formatNumber(project.cachedInputTokens), output: formatNumber(project.outputTokens) })}><span className="bg-sky-500" style={{ width: `${parts.nonCachedInput / segmentTotal * 100}%` }} /><span className="bg-emerald-500" style={{ width: `${parts.cachedInput / segmentTotal * 100}%` }} /><span className="bg-violet-500" style={{ width: `${parts.output / segmentTotal * 100}%` }} /></div></div>
-                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
-                      <span>{t("projects.values.input")} <b className="text-foreground">{formatNumber(project.inputTokens)}</b> <Peak show={isPositivePeak(project.inputTokens, peaks.inputTokens)} label={t("projects.highest")} /></span>
-                      <span>{t("projects.values.cached")} <b className="text-foreground">{formatNumber(project.cachedInputTokens)}</b> <span className="text-emerald-600 dark:text-emerald-400">({formatPercent(cacheHitRate)})</span> <Peak show={isPositivePeak(project.cachedInputTokens, peaks.cachedInputTokens)} label={t("projects.highest")} /></span>
-                      <span>{t("projects.values.output")} <b className="text-foreground">{formatNumber(project.outputTokens)}</b> <Peak show={isPositivePeak(project.outputTokens, peaks.outputTokens)} label={t("projects.highest")} /></span>
-                    </div>
-                    <div className="mt-2 flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">{t("projects.cols.cost")}</span><span className="flex items-center gap-1 font-medium text-foreground">{formatCurrency(project.costUSD)}<Peak show={isPositivePeak(project.costUSD, peaks.costUSD)} label={t("projects.highest")} /></span></div>
+                    <dl className="mt-2 grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
+                      <div className="min-w-0"><dt>{t("projects.values.uncached")}</dt><dd className="truncate text-xs font-medium tabular-nums text-foreground" title={formatNumber(parts.nonCachedInput)}>{compactTokenFormatter.format(parts.nonCachedInput)}</dd></div>
+                      <div className="min-w-0"><dt>{t("projects.values.cached")} <span className="text-emerald-600 dark:text-emerald-400">{formatPercent(cacheHitRate)}</span></dt><dd className="truncate text-xs font-medium tabular-nums text-foreground" title={formatNumber(parts.cachedInput)}>{compactTokenFormatter.format(parts.cachedInput)}</dd></div>
+                      <div className="min-w-0"><dt>{t("projects.values.output")}</dt><dd className="truncate text-xs font-medium tabular-nums text-foreground" title={formatNumber(parts.output)}>{compactTokenFormatter.format(parts.output)}</dd></div>
+                    </dl>
+                    <div className="mt-2 flex items-center justify-between gap-2"><span className="text-[11px] text-muted-foreground">{t("projects.cols.cost")}</span><span className="font-medium text-foreground" title={formatCurrency(project.costUSD)}>{formatCurrencyShort(project.costUSD)}</span></div>
                     <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full", costToneClasses[costTone])} data-cost-tone={costTone} style={{ width: `${costWidth}%` }} /></div>
                   </td>
                 </tr>;

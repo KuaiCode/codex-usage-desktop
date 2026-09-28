@@ -847,6 +847,11 @@ describe("session titles", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Alpha launch notes")).toBeInTheDocument());
+    const breakdown = screen.getByText("Uncached").closest("dl")!;
+    expect(within(breakdown).getByText("160")).toBeInTheDocument();
+    expect(within(breakdown).getByText("200")).toBeInTheDocument();
+    expect(within(breakdown).getByText("40")).toBeInTheDocument();
+    expect(within(breakdown).getByText("80")).toBeInTheDocument();
     const sessionsTableContainer = screen.getByRole("table").parentElement!;
     expect(sessionsTableContainer).toHaveClass("overflow-x-auto");
     expect(sessionsTableContainer).not.toHaveClass("overflow-auto", "max-h-[36vh]");

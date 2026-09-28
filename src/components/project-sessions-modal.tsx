@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
 import { projectLabel, sessionProjectReferences } from "@/lib/project-reference";
+import { projectTokenBreakdown } from "@/lib/project-analytics";
 
 type ProjectSessionsModalProps = {
   project: Pick<OverviewResponse["projects"][number], "project" | "displayName" | "codexProjectId" | "codexProjectName" | "codexProjectRoot" | "totalTokens" | "costUSD">;
@@ -110,6 +111,7 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }
   }, [analytics, t]);
   const trendData = useMemo(() => analytics?.daily.map((day) => ({ ...day, shortDate: formatTrendDateLabel(day.date), nonCachedInputTokens: Math.max(day.inputTokens - day.cachedInputTokens, 0) })) ?? [], [analytics]);
   const summary = analytics?.summary;
+  const summaryParts = summary ? projectTokenBreakdown(summary) : null;
   const cacheHitRate = summary && summary.inputTokens > 0 ? summary.cachedInputTokens / summary.inputTokens : 0;
   const maxDailyTokens = Math.max(...trendData.map((day) => day.totalTokens), 1);
   const maxDailyCost = Math.max(...trendData.map((day) => day.costUSD), 0);
@@ -128,10 +130,13 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }
           <h4 id="project-analytics-title" className="text-sm font-bold text-foreground">{t("project_modal.analytics_title")}</h4>
           {analyticsLoading ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">{t("project_modal.analytics_loading")}</div>
             : analyticsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{t("project_modal.analytics_error")}: {analyticsError}</div>
-              : analytics && summary ? <>
+              : analytics && summary && summaryParts ? <>
                 <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                   {[[t("project_modal.total_tokens"), formatNumber(summary.totalTokens)], [t("project_modal.cache_hit"), formatPercent(cacheHitRate)], [t("project_modal.estimated_cost"), formatCurrency(summary.costUSD)], [t("common.sessions"), sessionsLoading ? "—" : formatNumber(sessions.length)]].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-surface p-4"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums text-foreground">{value}</p></div>)}
                 </div>
+                <dl className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-4">
+                  {[{ label: t("projects.values.uncached"), value: summaryParts.nonCachedInput }, { label: t("projects.sort.input"), value: summary.inputTokens }, { label: t("project_modal.cached"), value: summaryParts.cachedInput }, { label: t("project_modal.output"), value: summaryParts.output }].map(({ label, value }) => <div key={label} className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold tabular-nums text-foreground">{formatNumber(value)}</dd></div>)}
+                </dl>
                 <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
                   <Card className="overflow-hidden">
                     <CardHeader>

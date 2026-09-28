@@ -47,7 +47,21 @@ describe("ProjectUsageCard", () => {
     expect(row("Medium").querySelector("[data-cost-tone='medium']")).toBeInTheDocument();
     expect(row("High").querySelector("[data-cost-tone='high']")).toBeInTheDocument();
     expect(within(row("Zero")).queryByText("Highest")).not.toBeInTheDocument();
-    expect(within(row("High")).getAllByText("Highest").length).toBeGreaterThan(0);
+    expect(within(row("High")).getAllByText("Highest")).toHaveLength(1);
+    expect(within(row("High")).queryByText("100% of peak")).not.toBeInTheDocument();
+  });
+
+  it("aligns compact token parts while retaining exact values", () => {
+    const usage = { ...project("High", 2_000_000, 9), inputTokens: 1_900_000, cachedInputTokens: 1_600_000, outputTokens: 100_000 };
+    render(<ProjectUsageCard projects={[usage]} />);
+
+    const cell = screen.getByText("High").closest("tr")!.querySelectorAll("td")[2];
+    expect(within(cell).getByText("2M")).toHaveAttribute("title", "2,000,000");
+    expect(within(cell).getByText("300K")).toHaveAttribute("title", "300,000");
+    expect(within(cell).getByText("1.6M")).toHaveAttribute("title", "1,600,000");
+    expect(within(cell).getByText("100K")).toHaveAttribute("title", "100,000");
+    expect(within(cell).getByText("84.2%")).toBeInTheDocument();
+    expect(cell.querySelector("dl")?.children).toHaveLength(3);
   });
 
   it("sorts by recent activity", async () => {
