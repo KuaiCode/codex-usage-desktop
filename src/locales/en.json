@@ -376,6 +376,7 @@
     "subtitle": "Analyze token and cost totals by project directory.",
     "card_title": "Project Usage",
     "card_subtitle": "Token and cost totals grouped by project directory for the selected window.",
+    "daily_trend": "Daily trend: {{project}}",
     "cols": {
       "project": "Project Directory",
       "tokens": "Total Tokens",

@@ -1,4 +1,4 @@
-import { $, browser, expect } from "@wdio/globals";
+import { $, $$, browser, expect } from "@wdio/globals";
 
 describe("Codex Usage Desktop page", () => {
   it("loads inside the Tauri WebView", async () => {
@@ -32,6 +32,20 @@ describe("Codex Usage Desktop page", () => {
     expect(await fiveHour.getText()).toMatch(/%|--/);
     expect(await weekly.getText()).toMatch(/%|--/);
   });
+
+  it("shows a daily trend for each project in the selected range", async () => {
+    const projectTab = $('[data-testid="projects-nav-tab"]');
+    await projectTab.waitForDisplayed({ timeout: 90_000 });
+    await projectTab.click();
+    await $('[data-testid="project-comparison"]').waitForDisplayed({ timeout: 90_000 });
+
+    const projectRows = await $$('[data-testid="project-comparison"] tbody tr[role="button"]');
+    const trends = await $$('[data-project-trend]');
+    expect(trends.length).toBe(projectRows.length);
+    if (projectRows.length > 0) {
+      await expect(trends[0].$('[data-testid="usage-trends-card"]')).toBeDisplayed();
+    }
+  }).timeout(180_000);
 
   it("opens the pricing catalog and refreshes without leaving the app unusable", async () => {
     await $('[data-testid="models-nav-tab"]').click();

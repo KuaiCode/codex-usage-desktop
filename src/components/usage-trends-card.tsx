@@ -1,6 +1,6 @@
 import { Bar, CartesianGrid, ComposedChart, Line, Area, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Maximize2, Minimize2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import type { OverviewResponse } from "@/lib/api";
@@ -16,6 +16,7 @@ type UsageTrendsCardProps = {
   cacheHitRate: number;
   chartHeight?: number | string;
   className?: string;
+  title?: string;
 };
 
 const summaryStyles: Record<MetricCardKind, { accent: string; dot: string }> = {
@@ -92,8 +93,9 @@ export const UsageTrendTooltip = ({ active, payload, label, t }: any) => {
   return null;
 };
 
-export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 300, className }: UsageTrendsCardProps) {
+export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 300, className, title }: UsageTrendsCardProps) {
   const { t } = useTranslation();
+  const gradientId = useId().replace(/:/g, "");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [hiddenSeries, setHiddenSeries] = useState<Set<ChartSeriesKey>>(() => new Set());
   const trendData = daily.map((day) => ({
@@ -147,6 +149,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
       )}
     >
       <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
+        {title ? <span className="mr-auto text-xs font-semibold text-foreground">{title}</span> : null}
         <span className="sr-only">{t("trends.total_token_trend", { defaultValue: "Total Token Trend" })}</span>
         <span className="sr-only">{t("trends.cost_trend", { defaultValue: "Cost Trend" })}</span>
         <div className="flex flex-1 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -188,7 +191,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <ComposedChart data={trendData} barGap={4} barCategoryGap="32%" margin={{ top: 18, right: 10, left: 4, bottom: 6 }}>
               <defs>
-                <linearGradient id="costGradient" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="rgb(var(--primary))" stopOpacity={0.1} />
                   <stop offset="80%" stopColor="rgb(var(--primary))" stopOpacity={0} />
                 </linearGradient>
@@ -230,7 +233,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 yAxisId="cost"
                 type="monotone"
                 dataKey="costUSD"
-                fill="url(#costGradient)"
+                fill={`url(#${gradientId})`}
                 stroke="none"
                 activeDot={false}
                 hide={hiddenSeries.has("costUSD")}
@@ -285,11 +288,11 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
           </ResponsiveContainer>
         </div>
 
-        <div className="grid overflow-hidden rounded-lg border border-border/70 bg-surface/70 sm:grid-cols-4">
+        {metrics.length > 0 ? <div className="grid overflow-hidden rounded-lg border border-border/70 bg-surface/70 sm:grid-cols-4">
           {metrics.map((metric) => (
             <SummaryCell key={metric.label} metric={metric} cacheHitRate={cacheHitRate} />
           ))}
-        </div>
+        </div> : null}
       </CardContent>
     </Card>
   );
@@ -299,7 +302,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
         <div
           className="fixed inset-0 z-[100] flex bg-background p-3 sm:p-5"
           role="dialog"
-          aria-label={t("trends.title")}
+          aria-label={title ?? t("trends.title")}
           aria-modal="true"
         >
           {card}

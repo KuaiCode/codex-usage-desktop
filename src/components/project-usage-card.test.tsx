@@ -6,6 +6,12 @@ import { beforeAll, describe, expect, it, vi } from "vitest";
 import { ProjectUsageCard } from "./project-usage-card";
 import type { OverviewResponse } from "@/lib/api";
 
+vi.mock("./usage-trends-card", () => ({
+  UsageTrendsCard: ({ daily, title }: { daily: OverviewResponse["daily"]; title: string }) => (
+    <div aria-label={title}>{daily.map((day) => `${day.date}: ${day.totalTokens}`).join(", ")}</div>
+  ),
+}));
+
 function project(displayName: string, totalTokens: number, costUSD: number): OverviewResponse["projects"][number] {
   const outputTokens = Math.min(totalTokens, 20);
   return { project: `/repo/${displayName}`, displayName, inputTokens: totalTokens - outputTokens, cachedInputTokens: Math.min(totalTokens - outputTokens, 20), outputTokens, totalTokens, costUSD };
@@ -70,5 +76,28 @@ describe("ProjectUsageCard", () => {
     expect(screen.getByText("Codex project")).toBeInTheDocument();
     expect(screen.getByText("/repo/codex-usage-desktop")).toBeInTheDocument();
     expect(screen.queryByText("codex-usage-desktop", { selector: "p" })).not.toBeInTheDocument();
+  });
+
+  it("shows each project's daily values and updates them with the selected range", () => {
+    const alpha = project("Alpha", 100, 3);
+    const bravo = project("Bravo", 200, 9);
+    const daily = (date: string, totalTokens: number): OverviewResponse["daily"][number] => ({
+      date, inputTokens: totalTokens, cachedInputTokens: 0, outputTokens: 0, totalTokens, costUSD: 0,
+    });
+    const { rerender } = render(<ProjectUsageCard projects={[alpha, bravo]} projectDaily={{
+      [alpha.project]: [daily("2026-09-27", 10), daily("2026-09-28", 90)],
+      [bravo.project]: [daily("2026-09-27", 200), daily("2026-09-28", 0)],
+    }} />);
+
+    expect(screen.getByLabelText("Daily trend: Alpha")).toHaveTextContent("2026-09-27: 10, 2026-09-28: 90");
+    expect(screen.getByLabelText("Daily trend: Bravo")).toHaveTextContent("2026-09-27: 200, 2026-09-28: 0");
+
+    rerender(<ProjectUsageCard projects={[alpha, bravo]} projectDaily={{
+      [alpha.project]: [daily("2026-09-28", 90)],
+      [bravo.project]: [daily("2026-09-28", 0)],
+    }} />);
+
+    expect(screen.getByLabelText("Daily trend: Alpha")).toHaveTextContent("2026-09-28: 90");
+    expect(screen.getByLabelText("Daily trend: Alpha")).not.toHaveTextContent("2026-09-27");
   });
 });

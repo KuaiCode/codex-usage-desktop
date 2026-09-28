@@ -376,6 +376,7 @@
     "subtitle": "分析各项目目录下的 Token 消耗和成本总计。",
     "card_title": "项目使用",
     "card_subtitle": "在所选时间范围内按项目分组的 Token 与成本总计。",
+    "daily_trend": "每日趋势：{{project}}",
     "cols": {
       "project": "项目路径/名称",
       "tokens": "Tokens 消耗",

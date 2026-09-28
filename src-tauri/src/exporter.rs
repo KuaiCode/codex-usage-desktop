@@ -442,6 +442,7 @@ mod tests {
                 total_tokens: 1600,
                 cost_usd: 0.005275,
             }],
+            project_daily: Default::default(),
         }
     }
 

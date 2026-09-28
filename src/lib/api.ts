@@ -59,6 +59,7 @@ export type OverviewResponse = {
     totalTokens: number;
     costUSD: number;
   }>;
+  projectDaily?: Record<string, OverviewResponse["daily"]>;
 };
 
 export type ModelQuotaEstimate = {

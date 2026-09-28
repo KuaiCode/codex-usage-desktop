@@ -356,6 +356,7 @@ export default function App() {
               </div>
               <ProjectUsageCard
                 projects={projects}
+                projectDaily={overview.projectDaily}
                 onProjectClick={(proj) => setSelectedProjectForModal(proj)}
               />
             </div>

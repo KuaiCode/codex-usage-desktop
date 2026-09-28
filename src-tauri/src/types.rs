@@ -200,6 +200,7 @@ pub struct OverviewResponse {
     pub totals: OverviewTotals,
     pub models: Vec<OverviewModelRow>,
     pub projects: Vec<OverviewProjectRow>,
+    pub project_daily: BTreeMap<String, Vec<OverviewDailyRow>>,
 }
 
 #[derive(Debug, Clone, Serialize)]

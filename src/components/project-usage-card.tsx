@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -18,9 +18,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { projectLabel } from "@/lib/project-reference";
+import { UsageTrendsCard } from "@/components/usage-trends-card";
 
 type ProjectUsageCardProps = {
   projects: OverviewResponse["projects"];
+  projectDaily?: OverviewResponse["projectDaily"];
   onProjectClick?: (project: OverviewResponse["projects"][number]) => void;
 };
 
@@ -35,7 +37,7 @@ function Peak({ show, label }: { show: boolean; label: string }) {
   return show ? <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">{label}</span> : null;
 }
 
-export function ProjectUsageCard({ projects, onProjectClick }: ProjectUsageCardProps) {
+export function ProjectUsageCard({ projects, projectDaily, onProjectClick }: ProjectUsageCardProps) {
   const { t } = useTranslation();
   const [sort, setSort] = useState<ProjectSort>("total");
   const [direction, setDirection] = useState<SortDirection>("desc");
@@ -99,7 +101,7 @@ export function ProjectUsageCard({ projects, onProjectClick }: ProjectUsageCardP
                 const cacheHitRate = project.inputTokens > 0 ? project.cachedInputTokens / project.inputTokens : 0;
                 const activate = () => onProjectClick?.(project);
                 const label = projectLabel(project);
-                return <tr key={project.project} role={onProjectClick ? "button" : undefined} tabIndex={onProjectClick ? 0 : undefined} aria-label={onProjectClick ? t("projects.open_details", { project: label }) : undefined} onClick={activate} onKeyDown={(event) => {
+                return <Fragment key={project.project}><tr role={onProjectClick ? "button" : undefined} tabIndex={onProjectClick ? 0 : undefined} aria-label={onProjectClick ? t("projects.open_details", { project: label }) : undefined} onClick={activate} onKeyDown={(event) => {
                   if (onProjectClick && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); activate(); }
                 }} className={cn("group align-top", onProjectClick && "cursor-pointer hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50")}>
                   <td className="border-b border-border/70 py-4 pr-4"><div className="flex min-w-0 items-center gap-2"><p className="truncate font-medium text-foreground group-hover:text-primary">{label}</p>{project.codexProjectName ? <span className="shrink-0 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-500">{t("projects.codex_project")}</span> : null}</div><p className="mt-1 break-all font-mono text-xs leading-5 text-muted-foreground">{project.project}</p></td>
@@ -113,7 +115,19 @@ export function ProjectUsageCard({ projects, onProjectClick }: ProjectUsageCardP
                     </div>
                   </td>
                   <td className="border-b border-border/70 py-4 text-right tabular-nums"><div className="ml-auto w-full max-w-48 space-y-2"><div className="flex items-center justify-end gap-2 font-medium text-foreground">{formatCurrency(project.costUSD)}<Peak show={isPositivePeak(project.costUSD, peaks.costUSD)} label={t("projects.highest")} /></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className={cn("h-full rounded-full", costToneClasses[costTone])} data-cost-tone={costTone} style={{ width: `${costWidth}%` }} /></div></div></td>
-                </tr>;
+                </tr>
+                {projectDaily?.[project.project] ? <tr>
+                  <td colSpan={3} className="border-b border-border/70 pb-5" data-project-trend={project.project}>
+                    <UsageTrendsCard
+                      daily={projectDaily[project.project]}
+                      metrics={[]}
+                      cacheHitRate={project.inputTokens > 0 ? project.cachedInputTokens / project.inputTokens : 0}
+                      chartHeight={200}
+                      title={t("projects.daily_trend", { project: label })}
+                      className="bg-surface/55 shadow-none hover:translate-y-0 hover:shadow-none"
+                    />
+                  </td>
+                </tr> : null}</Fragment>;
               })}</tbody>
             </table>
           </div>

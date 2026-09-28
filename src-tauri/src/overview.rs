@@ -175,6 +175,24 @@ pub fn get_overview(
             .cmp(&a.total_tokens)
             .then_with(|| a.project.cmp(&b.project))
     });
+    let project_daily = projects
+        .iter()
+        .map(|project| {
+            let days = daily
+                .iter()
+                .map(|day| {
+                    project_daily_row(
+                        day.date.clone(),
+                        rows_by_date
+                            .get(&day.date)
+                            .and_then(|row| row.projects.get(&project.project)),
+                        pricing_source,
+                    )
+                })
+                .collect();
+            (project.project.clone(), days)
+        })
+        .collect();
 
     Ok(OverviewResponse {
         range: range.to_string(),
@@ -205,6 +223,7 @@ pub fn get_overview(
         },
         models,
         projects,
+        project_daily,
     })
 }
 
@@ -248,30 +267,7 @@ pub fn get_project_analytics(
 
     let daily = list_date_keys(&start_date, &end_date)?
         .into_iter()
-        .map(|date| {
-            let usage = usage_by_date.get(&date);
-            let cost_usd = usage
-                .map(|usage| {
-                    usage
-                        .models
-                        .iter()
-                        .map(|(model, model_usage)| {
-                            calculate_cost_usd(model_usage, pricing_source.pricing_for_model(model))
-                        })
-                        .sum()
-                })
-                .unwrap_or(0.0);
-            OverviewDailyRow {
-                date,
-                input_tokens: usage.map(|usage| usage.input_tokens).unwrap_or(0),
-                cached_input_tokens: usage.map(|usage| usage.cached_input_tokens).unwrap_or(0),
-                output_tokens: usage.map(|usage| usage.output_tokens).unwrap_or(0),
-                total_tokens: usage.map(|usage| usage.total_tokens).unwrap_or(0),
-                cost_usd,
-                five_hour_percent: None,
-                weekly_percent: None,
-            }
-        })
+        .map(|date| project_daily_row(date.clone(), usage_by_date.get(&date), pricing_source))
         .collect::<Vec<_>>();
     let cost_usd = daily.iter().map(|day| day.cost_usd).sum();
     let mut models = summary
@@ -319,6 +315,33 @@ pub fn get_project_analytics(
         models,
         daily,
     })
+}
+
+fn project_daily_row(
+    date: String,
+    usage: Option<&ProjectUsage>,
+    pricing_source: &PricingSource,
+) -> OverviewDailyRow {
+    OverviewDailyRow {
+        date,
+        input_tokens: usage.map(|usage| usage.input_tokens).unwrap_or(0),
+        cached_input_tokens: usage.map(|usage| usage.cached_input_tokens).unwrap_or(0),
+        output_tokens: usage.map(|usage| usage.output_tokens).unwrap_or(0),
+        total_tokens: usage.map(|usage| usage.total_tokens).unwrap_or(0),
+        cost_usd: usage
+            .map(|usage| {
+                usage
+                    .models
+                    .iter()
+                    .map(|(model, model_usage)| {
+                        calculate_cost_usd(model_usage, pricing_source.pricing_for_model(model))
+                    })
+                    .sum()
+            })
+            .unwrap_or(0.0),
+        five_hour_percent: None,
+        weekly_percent: None,
+    }
 }
 
 fn overview_model_row(
@@ -657,6 +680,22 @@ mod tests {
             .collect::<BTreeMap<_, _>>();
         assert_eq!(project_dates["/repo/app"], "2026-07-03");
         assert_eq!(project_dates["/repo/other"], "2026-07-01");
+        let app_daily = &overview.project_daily["/repo/app"];
+        assert_eq!(app_daily.len(), 3);
+        assert_eq!(app_daily[0].total_tokens, 1_100_000);
+        assert_eq!(app_daily[1].date, "2026-07-02");
+        assert_eq!(app_daily[1].total_tokens, 0);
+        assert_eq!(app_daily[2].total_tokens, 550_000);
+        assert_eq!(overview.project_daily["/repo/other"][2].total_tokens, 0);
+        let app_total = overview
+            .projects
+            .iter()
+            .find(|project| project.project == "/repo/app")
+            .unwrap();
+        assert!(
+            (app_daily.iter().map(|day| day.cost_usd).sum::<f64>() - app_total.cost_usd).abs()
+                < 1e-12
+        );
 
         let response = get_project_analytics(
             &db,
