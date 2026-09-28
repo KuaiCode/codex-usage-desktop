@@ -43,6 +43,9 @@ describe("Codex Usage Desktop page", () => {
     const trends = await $$('[data-project-trend]');
     expect(trends.length).toBe(projectRows.length);
     if (projectRows.length > 0) {
+      expect(await projectRows[0].$$('td')).toHaveLength(3);
+      await expect(projectRows[0].$('td:nth-child(2) [data-testid="usage-trends-card"]')).toBeDisplayed();
+      await expect(projectRows[0].$('td:nth-child(3) [data-cost-tone]')).toBeExisting();
       await expect(trends[0].$('[data-testid="usage-trends-card"]')).toBeDisplayed();
     }
   }).timeout(180_000);

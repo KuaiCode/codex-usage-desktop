@@ -17,6 +17,7 @@ type UsageTrendsCardProps = {
   chartHeight?: number | string;
   className?: string;
   title?: string;
+  compact?: boolean;
 };
 
 const summaryStyles: Record<MetricCardKind, { accent: string; dot: string }> = {
@@ -35,16 +36,16 @@ const chartLegend = [
 
 type ChartSeriesKey = (typeof chartLegend)[number]["dataKey"];
 
-export const UsageTrendTooltip = ({ active, payload, label, t }: any) => {
+export const UsageTrendTooltip = ({ active, payload, label, t, compact = false }: any) => {
   if (active && payload && payload.length) {
     const input = payload.find((p: any) => p.dataKey === "inputTokens")?.value ?? 0;
     const cached = payload.find((p: any) => p.dataKey === "cachedInputTokens")?.value ?? 0;
     const output = payload.find((p: any) => p.dataKey === "outputTokens")?.value ?? 0;
     const cost = payload.find((p: any) => p.dataKey === "costUSD")?.value ?? 0;
-    const total = input + cached + output;
+    const total = payload.find((p: any) => p.dataKey === "totalTokens")?.value ?? input + cached + output;
 
     return (
-      <div className="min-w-[220px] select-none rounded-lg border border-border/70 bg-surface p-3.5 shadow-xl">
+      <div className={cn("select-none rounded-lg border border-border/70 bg-surface shadow-xl", compact ? "min-w-36 p-2" : "min-w-[220px] p-3.5")}>
         <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
           {label}
         </p>
@@ -54,29 +55,29 @@ export const UsageTrendTooltip = ({ active, payload, label, t }: any) => {
             <span>{formatNumber(total)}</span>
           </div>
 
-          <div className="flex items-center justify-between gap-4">
+          {!compact ? <div className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-blue-600/75" />
               {t("project_modal.input", { defaultValue: "Input" })}
             </span>
             <span className="font-mono font-medium text-foreground">{formatNumber(input)}</span>
-          </div>
+          </div> : null}
 
-          <div className="flex items-center justify-between gap-4">
+          {!compact ? <div className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-success/80" />
               {t("project_modal.cached", { defaultValue: "Cached" })}
             </span>
             <span className="font-mono font-medium text-foreground">{formatNumber(cached)}</span>
-          </div>
+          </div> : null}
 
-          <div className="flex items-center justify-between gap-4">
+          {!compact ? <div className="flex items-center justify-between gap-4">
             <span className="flex items-center gap-1.5 text-muted-foreground">
               <span className="h-2 w-2 rounded-full bg-violet-600/70" />
               {t("project_modal.output", { defaultValue: "Output" })}
             </span>
             <span className="font-mono font-medium text-foreground">{formatNumber(output)}</span>
-          </div>
+          </div> : null}
 
           <div className="mt-1.5 flex items-center justify-between gap-4 border-t border-border/60 pt-1.5 font-semibold text-primary">
             <span className="flex items-center gap-1.5">
@@ -93,7 +94,7 @@ export const UsageTrendTooltip = ({ active, payload, label, t }: any) => {
   return null;
 };
 
-export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 300, className, title }: UsageTrendsCardProps) {
+export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 300, className, title, compact = false }: UsageTrendsCardProps) {
   const { t } = useTranslation();
   const gradientId = useId().replace(/:/g, "");
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -148,7 +149,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
         isFullscreen && "w-full border-border bg-surface hover:translate-y-0 hover:shadow-none",
       )}
     >
-      <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
+      {compact ? <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground"><span className="sr-only">{title}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-blue-600" />{t("trends.total_tokens")}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-primary" />{t("common.cost")}</span></div> : <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
         {title ? <span className="mr-auto text-xs font-semibold text-foreground">{title}</span> : null}
         <span className="sr-only">{t("trends.total_token_trend", { defaultValue: "Total Token Trend" })}</span>
         <span className="sr-only">{t("trends.cost_trend", { defaultValue: "Cost Trend" })}</span>
@@ -178,8 +179,8 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
         >
           {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </button>
-      </CardHeader>
-      <CardContent className="flex flex-1 flex-col justify-between space-y-3 p-3 sm:p-3.5">
+      </CardHeader>}
+      <CardContent className={cn("flex flex-1 flex-col justify-between", compact ? "p-0" : "space-y-3 p-3 sm:p-3.5")}>
         <div
           style={
             typeof chartHeight === "number"
@@ -189,25 +190,26 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
           className={cn("min-w-0", typeof chartHeight === "string" && "flex-1 min-h-[145px]")}
         >
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-            <ComposedChart data={trendData} barGap={4} barCategoryGap="32%" margin={{ top: 18, right: 10, left: 4, bottom: 6 }}>
+            <ComposedChart data={trendData} barGap={4} barCategoryGap={compact ? "48%" : "32%"} margin={compact ? { top: 8, right: 4, left: 4, bottom: 0 } : { top: 18, right: 10, left: 4, bottom: 6 }}>
               <defs>
                 <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="rgb(var(--primary))" stopOpacity={0.1} />
                   <stop offset="80%" stopColor="rgb(var(--primary))" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid stroke="rgb(var(--border) / 0.45)" strokeDasharray="3 8" vertical={false} />
+              {!compact ? <CartesianGrid stroke="rgb(var(--border) / 0.45)" strokeDasharray="3 8" vertical={false} /> : null}
               <XAxis
                 dataKey="shortDate"
-                dy={10}
+                dy={compact ? 2 : 10}
                 interval="preserveStartEnd"
                 minTickGap={12}
                 tickLine={false}
                 axisLine={false}
-                tick={{ fill: "rgb(var(--muted-foreground) / 0.72)", fontSize: 11 }}
+                tick={{ fill: "rgb(var(--muted-foreground) / 0.72)", fontSize: compact ? 9 : 11 }}
               />
               <YAxis
                 yAxisId="tokens"
+                hide={compact}
                 width={tokenAxisWidth}
                 tickLine={false}
                 axisLine={false}
@@ -216,6 +218,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
               />
               <YAxis
                 yAxisId="cost"
+                hide={compact}
                 orientation="right"
                 width={costAxisWidth}
                 tickLine={false}
@@ -224,12 +227,12 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 tickFormatter={(value) => formatCurrencyShort(Number(value))}
               />
               <Tooltip
-                content={<UsageTrendTooltip t={t} />}
+                content={<UsageTrendTooltip t={t} compact={compact} />}
                 cursor={{ stroke: "rgb(var(--primary) / 0.22)", strokeDasharray: "4 4", strokeWidth: 1 }}
                 wrapperStyle={{ zIndex: 10 }}
               />
 
-              <Area
+              {!compact ? <Area
                 yAxisId="cost"
                 type="monotone"
                 dataKey="costUSD"
@@ -238,9 +241,17 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 activeDot={false}
                 hide={hiddenSeries.has("costUSD")}
                 isAnimationActive={false}
-              />
+              /> : null}
 
-              <Bar
+              {compact ? <Bar
+                yAxisId="tokens"
+                dataKey="totalTokens"
+                fill="rgb(37 99 235 / 0.72)"
+                maxBarSize={12}
+                radius={[2, 2, 0, 0]}
+                isAnimationActive={false}
+              /> : null}
+              {!compact ? <Bar
                 yAxisId="tokens"
                 dataKey="inputTokens"
                 name="Input tokens"
@@ -249,8 +260,8 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 maxBarSize={24}
                 hide={hiddenSeries.has("inputTokens")}
                 isAnimationActive={false}
-              />
-              <Bar
+              /> : null}
+              {!compact ? <Bar
                 yAxisId="tokens"
                 dataKey="cachedInputTokens"
                 name="Cached input tokens"
@@ -259,8 +270,8 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 maxBarSize={24}
                 hide={hiddenSeries.has("cachedInputTokens")}
                 isAnimationActive={false}
-              />
-              <Bar
+              /> : null}
+              {!compact ? <Bar
                 yAxisId="tokens"
                 dataKey="outputTokens"
                 name="Output tokens"
@@ -270,7 +281,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 radius={[5, 5, 0, 0]}
                 hide={hiddenSeries.has("outputTokens")}
                 isAnimationActive={false}
-              />
+              /> : null}
 
               <Line
                 yAxisId="cost"
@@ -278,9 +289,9 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
                 dataKey="costUSD"
                 name="Cost (USD)"
                 stroke="rgb(var(--primary))"
-                strokeWidth={2.75}
-                dot={{ r: 2.8, strokeWidth: 1.5, fill: "rgb(var(--surface))" }}
-                activeDot={{ r: 5.5, strokeWidth: 2.25, fill: "rgb(var(--surface))" }}
+                strokeWidth={compact ? 1.75 : 2.75}
+                dot={compact ? false : { r: 2.8, strokeWidth: 1.5, fill: "rgb(var(--surface))" }}
+                activeDot={compact ? { r: 3 } : { r: 5.5, strokeWidth: 2.25, fill: "rgb(var(--surface))" }}
                 hide={hiddenSeries.has("costUSD")}
                 isAnimationActive={false}
               />

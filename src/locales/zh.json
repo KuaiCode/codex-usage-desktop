@@ -382,6 +382,8 @@
       "tokens": "Tokens 消耗",
       "cost": "成本",
       "composition": "Token 构成",
+      "trend": "每日趋势",
+      "tokens_cost": "Token 与成本",
       "percent": "占总比",
       "actions": "操作"
     },

@@ -7,8 +7,8 @@ import { ProjectUsageCard } from "./project-usage-card";
 import type { OverviewResponse } from "@/lib/api";
 
 vi.mock("./usage-trends-card", () => ({
-  UsageTrendsCard: ({ daily, title }: { daily: OverviewResponse["daily"]; title: string }) => (
-    <div aria-label={title}>{daily.map((day) => `${day.date}: ${day.totalTokens}`).join(", ")}</div>
+  UsageTrendsCard: ({ daily, title, compact }: { daily: OverviewResponse["daily"]; title: string; compact?: boolean }) => (
+    <div aria-label={title} data-compact={compact}>{daily.map((day) => `${day.date}: ${day.totalTokens}`).join(", ")}</div>
   ),
 }));
 
@@ -91,6 +91,14 @@ describe("ProjectUsageCard", () => {
 
     expect(screen.getByLabelText("Daily trend: Alpha")).toHaveTextContent("2026-09-27: 10, 2026-09-28: 90");
     expect(screen.getByLabelText("Daily trend: Bravo")).toHaveTextContent("2026-09-27: 200, 2026-09-28: 0");
+    expect(screen.getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["Project Directory", "Daily trend", "Tokens and cost"]);
+    const alphaCells = screen.getByText("Alpha").closest("tr")!.querySelectorAll("td");
+    expect(alphaCells).toHaveLength(3);
+    expect(alphaCells[1]).toContainElement(screen.getByLabelText("Daily trend: Alpha"));
+    expect(screen.getByLabelText("Daily trend: Alpha")).toHaveAttribute("data-compact", "true");
+    expect(alphaCells[2]).toHaveTextContent("100");
+    expect(alphaCells[2]).toHaveTextContent("$3.00");
+    expect(screen.getAllByRole("row")).toHaveLength(3);
 
     rerender(<ProjectUsageCard projects={[alpha, bravo]} projectDaily={{
       [alpha.project]: [daily("2026-09-28", 90)],

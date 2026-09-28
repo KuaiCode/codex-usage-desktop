@@ -402,6 +402,8 @@
       "tokens": "総トークン数",
       "cost": "料金",
       "composition": "トークン構成",
+      "trend": "日別推移",
+      "tokens_cost": "トークンと料金",
       "percent": "全体に占める割合",
       "actions": "操作"
     },

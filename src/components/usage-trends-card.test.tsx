@@ -48,6 +48,17 @@ describe("UsageTrendTooltip", () => {
     expect(container.querySelector(".recharts-tooltip-wrapper")).toHaveStyle({ zIndex: "10" });
   });
 
+  it("shows only totals and cost in compact tooltips", () => {
+    render(<UsageTrendTooltip active compact label="09-28" payload={[
+      { dataKey: "totalTokens", value: 120 },
+      { dataKey: "costUSD", value: 0.25 },
+    ]} t={(key: string) => key} />);
+
+    expect(screen.getByText("120")).toBeInTheDocument();
+    expect(screen.getByText("$0.25")).toBeInTheDocument();
+    expect(screen.queryByText("project_modal.input")).not.toBeInTheDocument();
+  });
+
   it("expands the whole chart card and exits with Escape", async () => {
     const user = userEvent.setup();
     render(<UsageTrendsCard daily={[]} metrics={[]} cacheHitRate={0} />);

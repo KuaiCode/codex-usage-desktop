@@ -382,6 +382,8 @@
       "tokens": "Total Tokens",
       "cost": "Cost",
       "composition": "Token composition",
+      "trend": "Daily trend",
+      "tokens_cost": "Tokens and cost",
       "percent": "% of Total",
       "actions": "Actions"
     },
