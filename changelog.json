@@ -1,4 +1,8 @@
 {
+  "3.8.1": {
+    "zh": "- test: align project table header assertion",
+    "en": "- test: align project table header assertion"
+  },
   "3.8.0": {
     "zh": "- feat(projects): show daily usage trends for each project\n- feat(projects): compact trends into comparison rows\n- fix(projects): improve compact trend chart visibility\n- fix(projects): align compact trend colors with dashboard\n- fix(projects): match compact chart colors to reference\n- feat(projects): simplify usage comparison rows",
     "en": "- feat(projects): show daily usage trends for each project\n- feat(projects): compact trends into comparison rows\n- fix(projects): improve compact trend chart visibility\n- fix(projects): align compact trend colors with dashboard\n- fix(projects): match compact chart colors to reference\n- feat(projects): simplify usage comparison rows"
