@@ -149,7 +149,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
         isFullscreen && "w-full border-border bg-surface hover:translate-y-0 hover:shadow-none",
       )}
     >
-      {compact ? <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground"><span className="sr-only">{title}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-blue-600/75" />{t("trends.total_tokens")}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-primary" />{t("common.cost")}</span></div> : <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
+      {compact ? <div className="flex items-center gap-3 px-1 text-[10px] text-muted-foreground"><span className="sr-only">{title}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-success/80" />{t("trends.total_tokens")}</span><span className="inline-flex items-center gap-1"><i className="h-1.5 w-1.5 rounded-full bg-primary" />{t("common.cost")}</span></div> : <CardHeader className="flex shrink-0 flex-row items-center justify-end border-b border-border/80 p-2 sm:px-3 sm:py-1.5">
         {title ? <span className="mr-auto text-xs font-semibold text-foreground">{title}</span> : null}
         <span className="sr-only">{t("trends.total_token_trend", { defaultValue: "Total Token Trend" })}</span>
         <span className="sr-only">{t("trends.cost_trend", { defaultValue: "Cost Trend" })}</span>
@@ -246,7 +246,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
               {compact ? <Bar
                 yAxisId="tokens"
                 dataKey="totalTokens"
-                fill="rgb(37 99 235 / 0.72)"
+                fill="rgb(var(--success) / 0.78)"
                 maxBarSize={20}
                 radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
