@@ -1,4 +1,8 @@
 {
+  "3.8.2": {
+    "zh": "- test: await WebdriverIO element counts",
+    "en": "- test: await WebdriverIO element counts"
+  },
   "3.8.1": {
     "zh": "- test: align project table header assertion",
     "en": "- test: align project table header assertion"
