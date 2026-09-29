@@ -3,5 +3,5 @@
   "compilerOptions": {
     "types": ["node", "@wdio/globals/types", "mocha"]
   },
-  "include": ["wdio.conf.ts", "e2e"]
+  "include": ["wdio.conf.ts", "wdio.child-reaping.conf.ts", "e2e"]
 }

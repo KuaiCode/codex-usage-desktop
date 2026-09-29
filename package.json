@@ -30,6 +30,7 @@
     "test": "node --test scripts/release-tests.cjs && vitest run",
     "test:e2e:build": "tauri build --debug --no-bundle --features e2e --config src-tauri/tauri.e2e.conf.json",
     "test:e2e": "wdio run ./wdio.conf.ts",
+    "test:e2e:child-reaping": "node scripts/test-child-reaping.cjs",
     "bump": "node scripts/bump-version.cjs",
     "release": "node scripts/release.cjs",
     "downloads:trend": "node scripts/release-download-trend.cjs",
