@@ -717,7 +717,7 @@ async fn open_url(url: String) -> Result<(), String> {
     {
         std::process::Command::new("open")
             .arg(&url)
-            .spawn()
+            .status()
             .map_err(|e| e.to_string())?;
     }
     #[cfg(target_os = "windows")]
@@ -742,7 +742,7 @@ async fn reveal_in_file_manager(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     std::process::Command::new("open")
         .args(["-R", &path])
-        .spawn()
+        .status()
         .map_err(|error| error.to_string())?;
 
     #[cfg(target_os = "windows")]

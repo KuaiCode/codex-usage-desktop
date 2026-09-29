@@ -1340,9 +1340,7 @@ impl CodexRpcProcess {
     }
 
     fn shutdown(&mut self) {
-        if self.child.try_wait().ok().flatten().is_none() {
-            let _ = self.child.kill();
-        }
+        stop_child(&mut self.child);
     }
 
     fn timeout_error(&mut self, method: &str) -> String {
@@ -1381,6 +1379,13 @@ impl Drop for CodexRpcProcess {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+fn stop_child(child: &mut Child) {
+    if child.try_wait().ok().flatten().is_none() {
+        let _ = child.kill();
+    }
+    let _ = child.wait();
 }
 
 fn codex_app_server_args() -> [&'static str; 7] {
@@ -1803,6 +1808,21 @@ fn is_executable(path: &PathBuf) -> bool {
 mod tests {
     use super::*;
     use std::cell::Cell;
+
+    #[cfg(unix)]
+    #[test]
+    fn shutdown_reaps_running_child() {
+        unsafe extern "C" {
+            fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+        }
+
+        let mut child = Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = child.id() as i32;
+        stop_child(&mut child);
+
+        let mut status = 0;
+        assert_eq!(unsafe { waitpid(pid, &mut status, 1) }, -1);
+    }
 
     #[test]
     fn concurrent_limits_fetches_share_one_result() {
