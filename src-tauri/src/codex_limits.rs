@@ -1609,11 +1609,10 @@ fn codex_process_command(codex: &CodexCommand) -> Command {
             command
         }
         CodexCommand::WindowsCmd(path) => {
-            let args = codex_app_server_args().join(" ");
-            let mut command = Command::new("cmd.exe");
+            // Rust handles the cmd.exe launcher and batch-file escaping.
+            let mut command = Command::new(path);
             command
-                .args(["/D", "/S", "/C"])
-                .arg(format!("\"{}\" {args}", path.display()))
+                .args(codex_app_server_args())
                 .env("PATH", effective_path_with_codex(path));
             command
         }
@@ -1635,7 +1634,7 @@ fn codex_process_command(codex: &CodexCommand) -> Command {
 
 fn codex_activation_process_command(codex: &CodexCommand, working_directory: &Path) -> Command {
     let args = codex_activation_args();
-    match codex {
+    let mut command = match codex {
         CodexCommand::Native(path) => {
             #[cfg(target_os = "windows")]
             let mut command = Command::new(path);
@@ -1647,21 +1646,13 @@ fn codex_activation_process_command(codex: &CodexCommand, working_directory: &Pa
             };
             command
                 .args(args)
-                .current_dir(working_directory)
                 .env("PATH", effective_path_with_codex(path));
             command
         }
         CodexCommand::WindowsCmd(path) => {
-            let args = args
-                .iter()
-                .map(|arg| format!("\"{}\"", arg.replace('"', "\"\"")))
-                .collect::<Vec<_>>()
-                .join(" ");
-            let mut command = Command::new("cmd.exe");
+            let mut command = Command::new(path);
             command
-                .args(["/D", "/S", "/C"])
-                .arg(format!("\"{}\" {args}", path.display()))
-                .current_dir(working_directory)
+                .args(args)
                 .env("PATH", effective_path_with_codex(path));
             command
         }
@@ -1675,11 +1666,17 @@ fn codex_activation_process_command(codex: &CodexCommand, working_directory: &Pa
             let mut command = Command::new("wsl.exe");
             command
                 .args(["-d", distribution, "--", "sh", "-lc"])
-                .arg(login_command)
-                .current_dir(working_directory);
+                .arg(login_command);
             command
         }
+    };
+    command.current_dir(working_directory);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
+    command
 }
 
 fn shell_quote(value: &str) -> String {
@@ -2667,7 +2664,7 @@ mod tests {
     }
 
     #[test]
-    fn windows_cmd_wrapper_uses_cmd_exe_launcher() {
+    fn windows_cmd_wrapper_passes_unquoted_arguments_to_rust() {
         let codex = classify_native_command(PathBuf::from(r"C:\\Users\\test\\codex.cmd"), true);
         let command = codex_process_command(&codex);
         let args = command
@@ -2675,10 +2672,76 @@ mod tests {
             .map(|arg| arg.to_string_lossy().to_string())
             .collect::<Vec<_>>();
 
-        assert_eq!(command.get_program(), "cmd.exe");
-        assert_eq!(&args[..3], &["/D", "/S", "/C"]);
-        assert!(args[3].contains("codex.cmd"));
-        assert!(args[3].contains("app-server"));
+        assert_eq!(command.get_program(), r"C:\\Users\\test\\codex.cmd");
+        assert_eq!(args, codex_app_server_args());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_cli_launch_preserves_arguments_and_hides_activation_console() {
+        use std::os::windows::process::CommandExt;
+
+        let root = command_v_fixture("windows cli & activation");
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("capture.rs");
+        let executable = root.join("capture.exe");
+        fs::write(
+            &source,
+            r#"
+#[link(name = "kernel32")]
+extern "system" { fn GetConsoleWindow() -> *mut std::ffi::c_void; }
+fn main() {
+    println!("{}", unsafe { GetConsoleWindow().is_null() });
+    println!("{}", std::env::current_dir().unwrap().display());
+    for arg in std::env::args().skip(1) { println!("{arg}"); }
+}
+"#,
+        )
+        .unwrap();
+        let compiled = Command::new(env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
+            .arg(&source)
+            .arg("-o")
+            .arg(&executable)
+            .creation_flags(0x08000000)
+            .output()
+            .unwrap();
+        assert!(
+            compiled.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compiled.stderr)
+        );
+
+        for extension in ["exe", "cmd", "bat"] {
+            let path = root.join(format!("capture.{extension}"));
+            if extension != "exe" {
+                fs::write(
+                    &path,
+                    format!("@echo off\r\n\"{}\" %*\r\n", executable.display()),
+                )
+                .unwrap();
+            }
+            let codex = classify_native_command(path, true);
+            let output = codex_activation_process_command(&codex, &root)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let lines = stdout.lines().collect::<Vec<_>>();
+            assert_eq!(lines[0], "true", "activation must not create a console");
+            assert_eq!(lines[1], root.to_str().unwrap());
+            assert_eq!(&lines[2..], codex_activation_args());
+
+            let output = codex_process_command(&codex)
+                .creation_flags(0x08000000)
+                .current_dir(&root)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "{output:?}");
+            let stdout = String::from_utf8(output.stdout).unwrap();
+            let lines = stdout.lines().collect::<Vec<_>>();
+            assert_eq!(&lines[2..], codex_app_server_args());
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
