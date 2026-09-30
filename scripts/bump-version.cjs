@@ -14,11 +14,23 @@ if (!version || !/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(version
   process.exit(1);
 }
 
+// Resolve the baseline before rewriting any version files. Failed releases may still have tags.
+let previousTag;
+try {
+  previousTag = execFileSync(process.execPath, [path.join(__dirname, 'previous-release.cjs')], {
+    cwd: path.join(__dirname, '..'),
+    encoding: 'utf8'
+  }).trim();
+} catch (e) {
+  console.error('Error: Failed to determine the previous published release. Version files were not changed.');
+  process.exit(1);
+}
+
 pkg.version = version;
 fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 console.log(`Updated package.json version to ${version}`);
 
-// 1.5. Update changelog.json based on git log since last tag
+// 1.5. Update changelog.json based on git log since the last published release
 try {
   updateChangelog(version);
 } catch (e) {
@@ -87,16 +99,6 @@ function updateChangelog(version) {
     }
   }
 
-  // Get the last release tag of format app-v*
-  let previousTag = '';
-  try {
-    previousTag = git(['describe', '--tags', '--match', 'app-v*', '--abbrev=0'], {
-      cwd: path.join(__dirname, '..')
-    }).trim();
-  } catch (e) {
-    // No previous tag found
-  }
-
   let range = '';
   if (previousTag) {
     range = `${previousTag}..HEAD`;
@@ -113,7 +115,7 @@ function updateChangelog(version) {
   }
 
   // Filter commits (e.g. skip version bumps or merges)
-  const versionBumpRegex = /^chore(\([^)]*\))?:\s*\d+\.\d+\.\d+$/i;
+  const versionBumpRegex = /^(?:chore(\([^)]*\))?:\s*)?\d+\.\d+\.\d+$/i;
   const mergeCommitRegex = /^merge\b/i;
   const filteredCommits = commits.filter(subject => {
     return !versionBumpRegex.test(subject) && !mergeCommitRegex.test(subject);

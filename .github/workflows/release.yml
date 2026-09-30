@@ -98,10 +98,12 @@ jobs:
       - name: Generate release notes
         id: release_notes
         shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
 
-          previous_tag="$(git describe --tags --match 'app-v*' --abbrev=0 "${RELEASE_TAG}^" 2>/dev/null || true)"
+          previous_tag="$(node scripts/previous-release.cjs "${RELEASE_TAG}^")"
           if [[ -n "${previous_tag}" ]]; then
             range="${previous_tag}..${RELEASE_TAG}"
           else
@@ -113,7 +115,7 @@ jobs:
             echo
 
             has_changes=false
-            version_bump_regex='^chore(\([^)]*\))?:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+$'
+            version_bump_regex='^(chore(\([^)]*\))?:[[:space:]]*)?[0-9]+\.[0-9]+\.[0-9]+$'
             while IFS= read -r subject; do
               [[ -z "${subject}" ]] && continue
               if [[ "${subject}" =~ ${version_bump_regex} ]]; then

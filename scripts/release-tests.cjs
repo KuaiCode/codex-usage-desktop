@@ -13,6 +13,10 @@ function command(commandName, args, cwd, options = {}) {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require=${JSON.stringify(path.join(cwd, '.git', 'mock-github.cjs'))}`
+      },
       ...options
     });
     return { status: 0, output: stdout };
@@ -34,7 +38,7 @@ function createRepository() {
   fs.mkdirSync(path.join(root, 'src-tauri'));
   fs.mkdirSync(path.join(root, 'src-tauri', 'src'));
 
-  for (const filename of ['bump-version.cjs', 'git-utils.cjs', 'preversion.cjs', 'release.cjs']) {
+  for (const filename of ['bump-version.cjs', 'git-utils.cjs', 'preversion.cjs', 'release.cjs', 'previous-release.cjs']) {
     fs.copyFileSync(path.join(scriptsDirectory, filename), path.join(root, 'scripts', filename));
   }
 
@@ -73,6 +77,22 @@ function createRepository() {
   fs.writeFileSync(path.join(root, 'src-tauri', 'src', 'main.rs'), 'fn main() {}\n');
 
   git(root, 'init', '-q');
+  fs.writeFileSync(path.join(root, '.git', 'releases.json'), JSON.stringify([
+    { tag_name: 'app-v1.0.0', draft: false, prerelease: false }
+  ]));
+  fs.writeFileSync(path.join(root, '.git', 'mock-github.cjs'), `
+    const fs = require('node:fs');
+    const path = require('node:path');
+    global.fetch = async url => {
+      const data = JSON.parse(fs.readFileSync(path.join(__dirname, 'releases.json'), 'utf8'));
+      const page = Number(new URL(url).searchParams.get('page'));
+      return {
+        ok: Array.isArray(data),
+        status: 503,
+        json: async () => data.slice((page - 1) * 100, page * 100)
+      };
+    };
+  `);
   git(root, 'config', 'user.name', 'Release Test');
   git(root, 'config', 'user.email', 'release@example.com');
   git(root, 'add', '.');
@@ -159,6 +179,7 @@ test('waits for a transient index lock and succeeds', async () => {
 
   const child = spawn(process.execPath, ['scripts/release.cjs', 'minor'], {
     cwd: root,
+    env: { ...process.env, NODE_OPTIONS: `--require=${JSON.stringify(path.join(root, '.git', 'mock-github.cjs'))}` },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   let output = '';
@@ -208,4 +229,67 @@ test('blocks pnpm version before package.json changes', () => {
   assert.notEqual(result.status, 0);
   assert.equal(fs.readFileSync(path.join(root, 'package.json'), 'utf8'), before);
   assert.equal(git(root, 'status', '--porcelain'), '');
+});
+
+test('includes changes from failed releases and skips drafts and prereleases', () => {
+  const root = createRepository();
+  git(root, 'commit', '--allow-empty', '-qm', 'feat: before failed release');
+  assert.equal(runRelease(root, '1.1.0').status, 0);
+  git(root, 'commit', '--allow-empty', '-qm', 'fix: after failed release');
+  git(root, 'tag', 'app-v1.1.1');
+  fs.writeFileSync(path.join(root, '.git', 'releases.json'), JSON.stringify([
+    { tag_name: 'app-v1.1.1', draft: false, prerelease: true },
+    { tag_name: 'app-v1.1.0', draft: true, prerelease: false },
+    { tag_name: 'app-v1.0.0', draft: false, prerelease: false }
+  ]));
+
+  const result = runRelease(root, '1.2.0');
+  assert.equal(result.status, 0, result.output);
+  assertRelease(root, '1.2.0');
+  const notes = JSON.parse(fs.readFileSync(path.join(root, 'changelog.json')))['1.2.0'];
+  assert.equal(notes.en, '- feat: before failed release\n- fix: after failed release');
+  assert.equal(notes.zh, notes.en);
+  const baseline = command(process.execPath, ['scripts/previous-release.cjs', 'app-v1.2.0^'], root);
+  assert.equal(baseline.status, 0, baseline.output);
+  assert.equal(baseline.output.trim(), 'app-v1.0.0');
+});
+
+test('uses the last published ancestor across API pages, excluding the current and unrelated releases', () => {
+  const root = createRepository();
+  git(root, 'commit', '--allow-empty', '-qm', 'feat: published change');
+  assert.equal(runRelease(root, '1.1.0').status, 0);
+  git(root, 'commit', '--allow-empty', '-qm', 'fix: next change');
+  git(root, 'tag', 'app-v1.2.0');
+  git(root, 'checkout', '-qb', 'unrelated', 'app-v1.0.0');
+  git(root, 'commit', '--allow-empty', '-qm', 'feat: unrelated branch');
+  git(root, 'tag', 'app-v9.0.0');
+  git(root, 'checkout', '--detach', 'app-v1.2.0');
+  const releases = Array.from({ length: 100 }, () => ({ tag_name: 'app-v9.0.0', draft: false, prerelease: false }));
+  releases.push(...['1.2.0', '1.1.0', '1.0.0'].map(version => ({ tag_name: `app-v${version}`, draft: false, prerelease: false })));
+  fs.writeFileSync(path.join(root, '.git', 'releases.json'), JSON.stringify(releases));
+
+  const baseline = command(process.execPath, ['scripts/previous-release.cjs', 'app-v1.2.0^'], root);
+  assert.equal(baseline.status, 0, baseline.output);
+  assert.equal(baseline.output.trim(), 'app-v1.1.0');
+});
+
+test('includes all history when no published release exists', () => {
+  const root = createRepository();
+  fs.writeFileSync(path.join(root, '.git', 'releases.json'), '[]');
+  git(root, 'commit', '--allow-empty', '-qm', 'feat: first public release');
+  const result = runRelease(root, '1.1.0');
+  assert.equal(result.status, 0, result.output);
+  const notes = JSON.parse(fs.readFileSync(path.join(root, 'changelog.json')))['1.1.0'].en;
+  assert.equal(notes, '- initial\n- feat: first public release');
+});
+
+test('fails before changing version files when GitHub cannot be queried', () => {
+  const root = createRepository();
+  fs.writeFileSync(path.join(root, '.git', 'releases.json'), '{}');
+  const result = runRelease(root, '1.1.0');
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /GitHub releases query failed/);
+  assert.equal(git(root, 'status', '--porcelain'), '');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).version, '1.0.0');
+  assert.equal(git(root, 'tag', '--list', 'app-v1.1.0'), '');
 });
