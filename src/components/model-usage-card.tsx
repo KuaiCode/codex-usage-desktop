@@ -136,10 +136,12 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
                 <span className="flex min-w-0 items-center gap-2 font-medium"><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /><span className="truncate" title={model.model}>{model.model}</span></span>
                 <div className="grid gap-3">
                   <div className="grid gap-1">
+                    <span className="text-xs font-medium text-sky-600 dark:text-sky-400">{t("models.quota.five_hour")}</span>
                     <QuotaBar value={model.fiveHourQuota} maxPercent={quotaMaxPercent} color="#0ea5e9" label={t("models.quota.five_hour")} metric="percent" />
                     <QuotaBar value={model.fiveHourQuota} maxPercent={quotaPerMillionMaxPercent} color="#0ea5e9" label={t("models.quota.five_hour")} metric="percentPerMillionTokens" />
                   </div>
                   <div className="grid gap-1">
+                    <span className="text-xs font-medium text-violet-600 dark:text-violet-400">{t("models.quota.weekly")}</span>
                     <QuotaBar value={model.weeklyQuota} maxPercent={quotaMaxPercent} color="#8b5cf6" label={t("models.quota.weekly")} metric="percent" />
                     <QuotaBar value={model.weeklyQuota} maxPercent={quotaPerMillionMaxPercent} color="#8b5cf6" label={t("models.quota.weekly")} metric="percentPerMillionTokens" />
                   </div>

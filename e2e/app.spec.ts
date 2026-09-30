@@ -60,6 +60,8 @@ describe("Codex Usage Desktop page", () => {
     await quotaEstimates.waitForDisplayed({ timeout: 15_000 });
     const quotaModel = quotaEstimates.$("[data-quota-model]");
     await expect(quotaModel.$("summary")).toBeDisplayed();
+    await expect(quotaModel.$("summary")).toHaveText(expect.stringContaining("5-hour quota"));
+    await expect(quotaModel.$("summary")).toHaveText(expect.stringContaining("Weekly quota"));
     await expect(quotaModel.$$("[data-quota-metric='percent']")).toBeElementsArrayOfSize(2);
     await expect(quotaModel.$$("[data-quota-metric='percentPerMillionTokens']")).toBeElementsArrayOfSize(2);
     await quotaModel.$("summary").click();
