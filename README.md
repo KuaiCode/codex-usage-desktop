@@ -15,6 +15,7 @@ If you use Codex every day, you've probably wondered:
 - **Which project or session used most of my tokens?**
 - **How much did I use today compared with yesterday?**
 - **Which models are consuming the most tokens and estimated cost?**
+- **How much 5-hour and weekly quota does each model consume?**
 - **What exactly happened inside a long Codex session?**
 
 Codex Usage Desktop answers those questions by turning the Codex session data already on your computer into a clear native dashboard.
@@ -70,6 +71,8 @@ Break usage down by:
 - Session
 
 See **which project, model, or session consumed your tokens** and understand what drives your usage.
+
+For each model, see estimated 5-hour and weekly quota consumption over the selected period, both in total and per million tokens. These estimates come from single-model session snapshots and may be affected by concurrent sessions.
 
 ![Project usage details with token composition and estimated costs](docs/project-usage-detail.jpg)
 
