@@ -72,9 +72,11 @@ Break usage down by:
 
 See **which project, model, or session consumed your tokens** and understand what drives your usage.
 
+![Project usage details with token composition and estimated costs](docs/project-usage-detail.jpg)
+
 For each model, see estimated 5-hour and weekly quota consumption over the selected period, both in total and per million tokens. These estimates come from single-model session snapshots and may be affected by concurrent sessions.
 
-![Project usage details with token composition and estimated costs](docs/project-usage-detail.jpg)
+![Estimated model quota consumption for 5-hour and weekly limits](docs/model-quota-consumption.webp)
 
 ### 💬 Understand individual Codex sessions
 

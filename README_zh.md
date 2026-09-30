@@ -72,9 +72,11 @@ Codex Usage Desktop 将电脑上已有的 Codex 会话数据整理成清晰的�
 
 看清**具体是哪个项目、模型或会话消耗了 Token**，了解用量背后的原因。
 
+![展示 Token 构成与预估成本的项目用量详情](docs/project-usage-detail.jpg)
+
 查看所选时段内各模型对 5 小时和周额度的估算消耗，包括总消耗和每百万 Token 的消耗。这些估算来自仅使用单一模型的会话快照，同时进行的会话可能影响归属结果。
 
-![展示 Token 构成与预估成本的项目用量详情](docs/project-usage-detail.jpg)
+![各模型对 5 小时和周额度的估算消耗](docs/model-quota-consumption.webp)
 
 ### 💬 看懂每一段 Codex 会话
 
