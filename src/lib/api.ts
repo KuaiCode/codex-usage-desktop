@@ -112,6 +112,8 @@ export type MonthlyUsageResponse = {
     outputTokens: number;
     totalTokens: number;
     costUSD: number;
+    fiveHourPercent?: number | null;
+    weeklyPercent?: number | null;
   }>;
 };
 

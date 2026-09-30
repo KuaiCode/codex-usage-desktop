@@ -461,6 +461,8 @@ fn get_monthly_usage_for_end_month(
                     output_tokens: 0,
                     total_tokens: 0,
                     cost_usd: 0.0,
+                    five_hour_percent: None,
+                    weekly_percent: None,
                 },
             )
         })
@@ -474,6 +476,19 @@ fn get_monthly_usage_for_end_month(
             summary.output_tokens += row.output_tokens;
             summary.total_tokens += row.total_tokens;
             summary.cost_usd += row.cost_usd;
+        }
+    }
+
+    for (date, (five_hour, weekly)) in query_daily_quota_percents(db, &start_date, &end_date)? {
+        let month = month_key_from_date_key(&date)?;
+        if let Some(summary) = monthly_by_key.get_mut(&month) {
+            if let Some(percent) = five_hour {
+                summary.five_hour_percent =
+                    Some(summary.five_hour_percent.unwrap_or(0.0) + percent);
+            }
+            if let Some(percent) = weekly {
+                summary.weekly_percent = Some(summary.weekly_percent.unwrap_or(0.0) + percent);
+            }
         }
     }
 
@@ -607,6 +622,64 @@ mod tests {
         assert_eq!(response.monthly[11].month, "2026-05");
         assert_eq!(response.monthly[11].total_tokens, 490);
         assert_eq!(response.updated_at.as_deref(), Some("2026-05-01T00:00:00Z"));
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn monthly_quota_sums_daily_consumption_and_preserves_missing_snapshots() {
+        let path = temp_db_path("monthly-quota");
+        let db = open_database(&path).unwrap();
+        let window = |start, end, reset: &str| crate::types::SessionQuotaWindowUsage {
+            window_minutes: 300,
+            resets_at: Some(reset.to_string()),
+            observed_start_at: "2026-04-01T00:00:00Z".to_string(),
+            observed_end_at: "2026-04-01T01:00:00Z".to_string(),
+            observed_start_percent: start,
+            observed_end_percent: end,
+            observed_delta_percent: end - start,
+            below_resolution: false,
+        };
+        let usage = |five_hour, weekly| crate::types::SessionQuotaUsage { five_hour, weekly };
+        let rollup = crate::db::SessionQuotaRollup {
+            daily: BTreeMap::from([
+                (
+                    "2026-03-31".to_string(),
+                    usage(vec![window(0.0, 90.0, "outside")], vec![]),
+                ),
+                (
+                    "2026-04-01".to_string(),
+                    usage(
+                        vec![window(0.0, 80.0, "reset-1")],
+                        vec![window(10.0, 30.0, "weekly")],
+                    ),
+                ),
+                (
+                    "2026-04-02".to_string(),
+                    usage(
+                        vec![window(0.0, 70.0, "reset-2")],
+                        vec![window(30.0, 45.0, "weekly")],
+                    ),
+                ),
+                (
+                    "2026-05-01".to_string(),
+                    usage(vec![], vec![window(0.0, 0.0, "weekly-2")]),
+                ),
+            ]),
+            ..Default::default()
+        };
+        db.execute(
+            "INSERT INTO session_file_rollups (path, modified_at_ms, size_bytes, rows_json, quota_usage_json, updated_at) VALUES ('quota', 0, 0, '[]', ?, '2026-05-01T00:00:00Z')",
+            [serde_json::to_string(&rollup).unwrap()],
+        ).unwrap();
+
+        let response = get_monthly_usage_for_end_month(&db, "UTC", "2026-06", 3).unwrap();
+        assert_eq!(response.monthly[0].five_hour_percent, Some(150.0));
+        assert_eq!(response.monthly[0].weekly_percent, Some(35.0));
+        assert_eq!(response.monthly[1].five_hour_percent, None);
+        assert_eq!(response.monthly[1].weekly_percent, Some(0.0));
+        assert_eq!(response.monthly[2].five_hour_percent, None);
+        assert_eq!(response.monthly[2].weekly_percent, None);
 
         let _ = std::fs::remove_file(path);
     }

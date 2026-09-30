@@ -35,7 +35,9 @@ function isInactiveMonth(month: MonthlyRow) {
     month.cachedInputTokens === 0 &&
     month.outputTokens === 0 &&
     month.totalTokens === 0 &&
-    month.costUSD === 0
+    month.costUSD === 0 &&
+    month.fiveHourPercent == null &&
+    month.weeklyPercent == null
   );
 }
 
@@ -134,6 +136,12 @@ function MonthDelta({ current, previous, labels }: { current: number; previous: 
   );
 }
 
+function QuotaPercent({ value }: { value?: number | null }) {
+  const { t } = useTranslation();
+  if (value == null) return <span className="text-muted-foreground">--</span>;
+  return <span>{value < 0.5 ? "<1%" : `${t("sessions.quota.approx")} ${Math.round(value)}%`}</span>;
+}
+
 export function MonthlyUsageTable({ data }: MonthlyUsageTableProps) {
   const { t } = useTranslation();
   const [sortField, setSortField] = useState<SortField>("month");
@@ -215,11 +223,12 @@ export function MonthlyUsageTable({ data }: MonthlyUsageTableProps) {
           <p className="px-6 py-10 text-center text-sm text-muted-foreground">{t("monthly.no_data")}</p>
         ) : (
           <div className="overflow-x-auto px-4 sm:px-6" data-monthly-scroll>
-            <table className="min-w-[760px] w-full border-separate border-spacing-0 text-sm">
+            <table className="min-w-[900px] w-full border-separate border-spacing-0 text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase tracking-[0.14em] text-muted-foreground">
                   <th className="w-36 border-b border-border py-3 font-medium">{t("monthly.cols.month")}</th>
                   <th className="border-b border-border px-4 py-3 font-medium">{t("monthly.cols.tokens")}</th>
+                  <th className="w-36 border-b border-border px-4 py-3 font-medium">{t("daily.cols.quota")}</th>
                   <th className="w-56 border-b border-border py-3 text-right font-medium">{t("monthly.cols.cost")}</th>
                 </tr>
               </thead>
@@ -236,6 +245,7 @@ export function MonthlyUsageTable({ data }: MonthlyUsageTableProps) {
                       <tr key={`inactive-${row.startMonth}-${row.endMonth}`} className="align-top">
                         <td className="border-b border-border/70 py-4 font-medium text-foreground">{monthLabel}</td>
                         <td className="border-b border-border/70 px-4 py-4"><span className="inline-flex rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">{usageLabel}</span></td>
+                        <td className="border-b border-border/70 px-4 py-4 text-muted-foreground">--</td>
                         <td className="border-b border-border/70 py-4 text-right text-muted-foreground">--</td>
                       </tr>
                     );
@@ -277,6 +287,12 @@ export function MonthlyUsageTable({ data }: MonthlyUsageTableProps) {
                             <span className="inline-flex items-center gap-1.5" data-metric="cachedInputTokens">{t("monthly.cached_with_rate", { rate: formatPercent(cacheHitRate) })} <strong className="font-medium text-foreground">{formatNumber(month.cachedInputTokens)}</strong><MonthDelta current={month.cachedInputTokens} previous={month.previous?.cachedInputTokens ?? null} labels={deltaLabels} />{month.cachedInputTokens > 0 && month.cachedInputTokens === peaks.cachedInputTokens ? <PeakBadge label={peakLabel} /> : null}</span>
                             <span className="inline-flex items-center gap-1.5" data-metric="outputTokens">{t("monthly.output")} <strong className="font-medium text-foreground">{formatNumber(month.outputTokens)}</strong><MonthDelta current={month.outputTokens} previous={month.previous?.outputTokens ?? null} labels={deltaLabels} />{month.outputTokens > 0 && month.outputTokens === peaks.outputTokens ? <PeakBadge label={peakLabel} /> : null}</span>
                           </div>
+                        </div>
+                      </td>
+                      <td className="border-b border-border/70 px-4 py-4 tabular-nums">
+                        <div className="space-y-1 text-xs">
+                          <div data-quota="fiveHour"><span className="font-medium text-muted-foreground">{t("sessions.quota.five_hour")}</span> <QuotaPercent value={month.fiveHourPercent} /></div>
+                          <div data-quota="weekly"><span className="font-medium text-muted-foreground">{t("sessions.quota.weekly")}</span> <QuotaPercent value={month.weeklyPercent} /></div>
                         </div>
                       </td>
                       <td className="border-b border-border/70 py-4 text-right tabular-nums">
