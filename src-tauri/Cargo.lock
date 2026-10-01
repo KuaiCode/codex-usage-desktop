@@ -567,6 +567,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-wdio",
  "tauri-plugin-wdio-webdriver",
+ "uuid",
  "walkdir",
 ]
 

@@ -11,6 +11,7 @@ mod scanner;
 mod session_index;
 mod session_replay;
 mod types;
+mod update_analytics;
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -38,6 +39,7 @@ struct AppState {
     database_path: PathBuf,
     pricing_cache_path: PathBuf,
     window_activation_marker_path: PathBuf,
+    install_id: Option<String>,
 }
 
 struct BackgroundRefreshSchedule {
@@ -470,11 +472,26 @@ async fn check_for_updates(
             version: String,
         }
 
-        let manifest_url = "https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/latest.json";
-        let manifest_response = client
+        let endpoint = app
+            .config()
+            .plugins
+            .0
+            .get("updater")
+            .and_then(|config| config.get("endpoints"))
+            .and_then(|endpoints| endpoints.get(0))
+            .and_then(|endpoint| endpoint.as_str())
+            .ok_or("Updater endpoint is not configured")?;
+        let manifest_url = update_analytics::manifest_endpoint(endpoint, &current_version)?;
+        let mut manifest_request = client
             .get(manifest_url)
             .header("User-Agent", "codex-usage-desktop")
-            .header("Accept", "application/json")
+            .header("Accept", "application/json");
+        if update_analytics::uses_analytics(endpoint) {
+            if let Some(id) = &app.state::<AppState>().install_id {
+                manifest_request = manifest_request.header("X-Install-Id", id);
+            }
+        }
+        let manifest_response = manifest_request
             .send()
             .map_err(|e| format!("Update manifest request failed: {e}"))?;
 
@@ -629,7 +646,24 @@ async fn check_for_updates(
 async fn download_and_install_update(
     app: tauri::AppHandle,
 ) -> Result<UpdateInstallResponse, String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
+    let mut builder = app.updater_builder();
+    let analytics_enabled = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|config| config.get("endpoints"))
+        .and_then(|endpoints| endpoints.get(0))
+        .and_then(|endpoint| endpoint.as_str())
+        .is_some_and(update_analytics::uses_analytics);
+    if analytics_enabled {
+        if let Some(id) = &app.state::<AppState>().install_id {
+            builder = builder
+                .header("X-Install-Id", id)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    let updater = builder.build().map_err(|e| e.to_string())?;
     let update = updater
         .check()
         .await
@@ -929,10 +963,19 @@ pub fn run() {
             std::fs::create_dir_all(&app_data_dir)?;
             let database_path = app_data_dir.join("codex-usage-desktop.db");
             let pricing_cache_path = app_data_dir.join("codex-pricing-cache.json");
+            let install_id =
+                update_analytics::load_install_id(&app_data_dir.join("analytics-install-id.v1"))
+                    .map_err(|_| {
+                        log::warn!(
+                            "Anonymous update analytics disabled: installation ID unavailable"
+                        )
+                    })
+                    .ok();
             app.manage(AppState {
                 database_path: database_path.clone(),
                 pricing_cache_path: pricing_cache_path.clone(),
                 window_activation_marker_path: app_data_dir.join("codex-window-activation.json"),
+                install_id,
             });
             let background_refresh_schedule = Arc::new(BackgroundRefreshSchedule::new());
             app.manage(background_refresh_schedule.clone());

@@ -37,7 +37,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEJDMjlFQThGNDU1RDNBMzMKUldRek9sMUZqK29wdk83KzNIeUVwMEsxaDJXQjRRTkJQUlBOa0QvbWh6UEUybzVaNzZhaHE1MlMK",
       "endpoints": [
-        "https://github.com/itvincent-git/codex-usage-desktop/releases/latest/download/latest.json"
+        "https://tup.itvincent.net/codex-usage-desktop/latest.json?v={{current_version}}&target={{target}}&arch={{arch}}"
       ]
     }
   }
