@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Cpu, FileText, Folder, Search, Terminal, X } from "lucide-react";
-import { Area, Bar, CartesianGrid, Cell, ComposedChart, Line, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import dayjs from "dayjs";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Coins, Database, Folder, Search, Terminal, X } from "lucide-react";
+import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   fetchProjectAnalytics,
   fetchSessionDetails,
@@ -11,27 +10,24 @@ import {
   type SessionDetailRow,
 } from "@/lib/api";
 import { formatCompactNumber, formatCurrency, formatCurrencyShort, formatNumber, formatPercent } from "@/lib/formatters";
-import { MODEL_PAGE_COLORS, OTHER_MODEL_COLOR, modelTone } from "@/lib/model-analytics";
 import { formatTrendDateLabel, getYAxisWidth } from "@/lib/usage-dashboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
 import { projectLabel, sessionProjectReferences } from "@/lib/project-reference";
 import { projectTokenBreakdown } from "@/lib/project-analytics";
+import { MetricBadge } from "./metric-badge";
+import { SessionUsageTable } from "./session-usage-table";
+import { useModalFocus } from "@/hooks/use-modal-focus";
 
 type ProjectSessionsModalProps = {
   project: Pick<OverviewResponse["projects"][number], "project" | "displayName" | "codexProjectId" | "codexProjectName" | "codexProjectRoot" | "totalTokens" | "costUSD">;
   range: RangeKey;
   onClose: () => void;
+  onSessionClick?: (session: SessionDetailRow) => void;
+  isActive?: boolean;
   onGoToSessions: (projectPath: string) => void;
 };
-
-function formatBytes(bytes: number) {
-  if (bytes === 0) return "0 Bytes";
-  const units = ["Bytes", "KB", "MB", "GB"];
-  const index = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / 1024 ** index).toFixed(1).replace(/\.0$/, "")} ${units[index]}`;
-}
 
 function cleanSessionId(sessionId: string) {
   return sessionId.replace(/\.jsonl$/, "");
@@ -52,7 +48,7 @@ function TrendTooltip({ active, payload, label, t }: any) {
   </div>;
 }
 
-export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }: ProjectSessionsModalProps) {
+export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, onSessionClick, isActive = true }: ProjectSessionsModalProps) {
   const { t } = useTranslation();
   const [sessions, setSessions] = useState<SessionDetailRow[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(true);
@@ -62,14 +58,13 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  useModalFocus(dialogRef, closeButtonRef, onClose, isActive);
 
   useEffect(() => {
     let active = true;
+    setAnalytics(null);
     setAnalyticsLoading(true);
     setAnalyticsError(null);
     void fetchProjectAnalytics(project.project, range).then((data) => {
@@ -102,13 +97,6 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }
         .some((value) => value?.toLowerCase().includes(query))));
   }, [searchQuery, sessions]);
 
-  const modelData = useMemo(() => {
-    if (!analytics) return [];
-    const sorted = [...analytics.models].sort((left, right) => right.totalTokens - left.totalTokens || left.model.localeCompare(right.model));
-    const visible = sorted.slice(0, 6).map((model, index) => ({ ...model, color: MODEL_PAGE_COLORS[index % MODEL_PAGE_COLORS.length] }));
-    const other = sorted.slice(6).reduce((sum, model) => sum + model.totalTokens, 0);
-    return other > 0 ? [...visible, { model: t("models.other"), totalTokens: other, color: OTHER_MODEL_COLOR }] : visible;
-  }, [analytics, t]);
   const trendData = useMemo(() => analytics?.daily.map((day) => ({ ...day, shortDate: formatTrendDateLabel(day.date), nonCachedInputTokens: Math.max(day.inputTokens - day.cachedInputTokens, 0) })) ?? [], [analytics]);
   const summary = analytics?.summary;
   const summaryParts = summary ? projectTokenBreakdown(summary) : null;
@@ -118,77 +106,89 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions }
   const tokenAxisWidth = getYAxisWidth(maxDailyTokens, formatCompactNumber, 64);
   const costAxisWidth = getYAxisWidth(maxDailyCost, formatCurrencyShort, 72);
 
-  return <div onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="modal-project-title">
-    <div className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-border/80 bg-surface/95 shadow-2xl">
-      <div className="flex items-start justify-between border-b border-border/60 bg-muted/20 px-6 py-5">
-        <div className="flex min-w-0 items-center gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-indigo-500/10 bg-indigo-500/10 text-indigo-500"><Folder className="h-5 w-5" /></span><div className="min-w-0"><div className="flex min-w-0 items-center gap-2"><h3 id="modal-project-title" className="truncate text-lg font-bold text-foreground">{projectLabel(analytics ?? project)}</h3>{(analytics?.codexProjectName ?? project.codexProjectName) ? <span className="shrink-0 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-500">{t("projects.codex_project")}</span> : null}</div><p className="truncate font-mono text-xs text-muted-foreground" title={project.project}>{project.project}</p>{analytics ? <p className="mt-1 text-[10px] text-muted-foreground">{analytics.startDate} – {analytics.endDate} · {analytics.timezone}</p> : null}</div></div>
-        <button type="button" onClick={onClose} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40" aria-label={t("range_switcher.modal_close_aria")}><X className="h-5 w-5" /></button>
-      </div>
+  const rangeSessionCount = analytics ? new Set(sessions.filter((session) => {
+    const dates = session.totalTokens > 0 && session.dailyUsage.length > 0
+      ? session.dailyUsage.filter((day) => day.projects.includes(project.project)).map((day) => day.date)
+      : [new Intl.DateTimeFormat("en-CA", { timeZone: analytics.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(session.modifiedAtMs)];
+    return dates.some((date) => date >= analytics.startDate && date <= analytics.endDate);
+  }).map((session) => session.path)).size : 0;
 
-      <div className="flex-1 space-y-6 overflow-y-auto p-6">
-        <section aria-labelledby="project-analytics-title" className="space-y-4">
-          <h4 id="project-analytics-title" className="text-sm font-bold text-foreground">{t("project_modal.analytics_title")}</h4>
-          {analyticsLoading ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">{t("project_modal.analytics_loading")}</div>
-            : analyticsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{t("project_modal.analytics_error")}: {analyticsError}</div>
-              : analytics && summary && summaryParts ? <>
-                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                  {[[t("project_modal.total_tokens"), formatNumber(summary.totalTokens)], [t("project_modal.cache_hit"), formatPercent(cacheHitRate)], [t("project_modal.estimated_cost"), formatCurrency(summary.costUSD)], [t("common.sessions"), sessionsLoading ? "—" : formatNumber(sessions.length)]].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-surface p-4"><p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-1 text-xl font-bold tabular-nums text-foreground">{value}</p></div>)}
-                </div>
-                <dl className="grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-4">
-                  {[{ label: t("projects.values.uncached"), value: summaryParts.nonCachedInput }, { label: t("projects.sort.input"), value: summary.inputTokens }, { label: t("project_modal.cached"), value: summaryParts.cachedInput }, { label: t("project_modal.output"), value: summaryParts.output }].map(({ label, value }) => <div key={label} className="min-w-0"><dt className="text-xs text-muted-foreground">{label}</dt><dd className="mt-1 font-semibold tabular-nums text-foreground">{formatNumber(value)}</dd></div>)}
-                </dl>
-                <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
-                  <Card className="overflow-hidden">
-                    <CardHeader>
-                      <CardTitle>{t("project_modal.model_share")}</CardTitle>
-                      <CardDescription>{t("project_modal.model_share_desc")}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex min-h-[240px] flex-col items-center gap-3 sm:flex-row">
-                      {modelData.length === 0 ? <p className="w-full py-16 text-center text-sm text-muted-foreground">{t("project_modal.no_model_data")}</p> : <>
-                        <div className="h-48 w-full min-w-0 sm:w-1/2"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={modelData} dataKey="totalTokens" nameKey="model" innerRadius={50} outerRadius={78} paddingAngle={2}>{modelData.map((entry) => <Cell key={entry.model} fill={entry.color} />)}</Pie><Tooltip formatter={(value) => formatNumber(Number(value))} /></PieChart></ResponsiveContainer></div>
-                        <div className="grid w-full gap-2 text-xs sm:w-1/2">{modelData.map((entry) => <div key={entry.model} className="flex items-center justify-between gap-3" data-model-legend={entry.model} data-model-color={entry.color}><span className="min-w-0 truncate"><i className="mr-2 inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />{entry.model}</span><span className="tabular-nums text-muted-foreground">{formatPercent(entry.totalTokens / Math.max(summary.totalTokens, 1))}</span></div>)}</div>
-                      </>}
-                    </CardContent>
-                  </Card>
-                  <Card className="overflow-hidden">
-                    <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/80">
-                      <div><CardTitle>{t("project_modal.daily_trend")}</CardTitle><CardDescription>{t("project_modal.daily_trend_desc")}</CardDescription></div>
-                      <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground" aria-label={t("project_modal.daily_trend")}>
-                        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-blue-600/75" />{t("project_modal.input")}</span>
-                        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-success/80" />{t("project_modal.cached")}</span>
-                        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-violet-600/70" />{t("project_modal.output")}</span>
-                        <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-primary" />{t("common.cost")}</span>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="p-3.5">
-                      {trendData.every((day) => day.totalTokens === 0 && day.costUSD === 0) ? <p className="py-16 text-center text-sm text-muted-foreground">{t("project_modal.no_trend_data")}</p> : <div className="h-64 min-w-0"><ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}><ComposedChart data={trendData} barGap={4} barCategoryGap="32%" margin={{ top: 18, right: 10, left: 4, bottom: 6 }}>
-                        <defs><linearGradient id="projectCostGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgb(var(--primary))" stopOpacity={0.1} /><stop offset="80%" stopColor="rgb(var(--primary))" stopOpacity={0} /></linearGradient></defs>
-                        <CartesianGrid stroke="rgb(var(--border) / 0.45)" strokeDasharray="3 8" vertical={false} />
-                        <XAxis dataKey="shortDate" dy={10} interval="preserveStartEnd" minTickGap={12} tickLine={false} axisLine={false} tick={{ fill: "rgb(var(--muted-foreground) / 0.72)", fontSize: 11 }} />
-                        <YAxis yAxisId="tokens" width={tokenAxisWidth} tickLine={false} axisLine={false} tick={{ fill: "rgb(var(--muted-foreground) / 0.7)", fontSize: 11 }} tickFormatter={(value) => formatCompactNumber(Number(value))} />
-                        <YAxis yAxisId="cost" orientation="right" width={costAxisWidth} tickLine={false} axisLine={false} tick={{ fill: "rgb(var(--primary) / 0.78)", fontSize: 11 }} tickFormatter={(value) => formatCurrencyShort(Number(value))} />
-                        <Tooltip content={<TrendTooltip t={t} />} cursor={{ stroke: "rgb(var(--primary) / 0.22)", strokeDasharray: "4 4", strokeWidth: 1 }} />
-                        <Area yAxisId="cost" type="monotone" dataKey="costUSD" fill="url(#projectCostGradient)" stroke="none" activeDot={false} isAnimationActive={false} />
-                        <Bar yAxisId="tokens" dataKey="nonCachedInputTokens" stackId="tokens" fill="rgb(37 99 235 / 0.72)" maxBarSize={24} isAnimationActive={false} />
-                        <Bar yAxisId="tokens" dataKey="cachedInputTokens" stackId="tokens" fill="rgb(var(--success) / 0.78)" maxBarSize={24} isAnimationActive={false} />
-                        <Bar yAxisId="tokens" dataKey="outputTokens" stackId="tokens" fill="rgb(124 58 237 / 0.72)" maxBarSize={24} radius={[5, 5, 0, 0]} isAnimationActive={false} />
-                        <Line yAxisId="cost" type="monotone" dataKey="costUSD" stroke="rgb(var(--primary))" strokeWidth={2.75} dot={{ r: 2.8, strokeWidth: 1.5, fill: "rgb(var(--surface))" }} activeDot={{ r: 5.5, strokeWidth: 2.25, fill: "rgb(var(--surface))" }} isAnimationActive={false} />
-                      </ComposedChart></ResponsiveContainer></div>}
-                    </CardContent>
-                  </Card>
-                </div>
-              </> : <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t("project_modal.no_analytics")}</div>}
-        </section>
-
-        <section aria-labelledby="project-sessions-title" className="space-y-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h4 id="project-sessions-title" className="text-sm font-bold text-foreground">{t("project_modal.sessions_list")}</h4><p className="text-xs text-muted-foreground">{searchQuery ? t("project_modal.showing_filtered", { filtered: filteredSessions.length }) : t("project_modal.subtitle_desc")}</p></div><div className="relative w-full sm:max-w-xs"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" /><input aria-label={t("project_modal.search_aria")} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("project_modal.search_placeholder")} className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-primary/30" /></div></div>
-          {sessionsLoading ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">{t("loading.loading_sessions")}</div>
-            : sessionsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{sessionsError}</div>
-              : filteredSessions.length === 0 ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><Terminal className="mx-auto h-6 w-6 text-muted-foreground" /><p className="mt-2 text-sm font-medium">{searchQuery ? t("project_modal.no_matching_sessions") : t("project_modal.no_sessions")}</p></div>
-                : <div className="overflow-x-auto rounded-xl border border-border"><table className="min-w-[850px] w-full text-sm"><thead className="sticky top-0 bg-surface"><tr className="text-left text-[10px] uppercase tracking-wider text-muted-foreground"><th className="border-b border-border px-4 py-3">{t("project_modal.session_id_file")}</th><th className="border-b border-border px-4 py-3">{t("common.model")}</th><th className="border-b border-border px-4 py-3 text-right">{t("project_modal.total_tokens")}</th><th className="border-b border-border px-4 py-3 text-right">{t("project_modal.input")}</th><th className="border-b border-border px-4 py-3 text-right">{t("project_modal.cached")}</th><th className="border-b border-border px-4 py-3 text-right">{t("project_modal.output")}</th><th className="border-b border-border px-4 py-3 text-right">{t("common.cost")}</th></tr></thead><tbody>{filteredSessions.map((session) => <tr key={session.path} className="border-b border-border/60"><td className="px-4 py-3"><div className="flex items-center gap-1.5 font-semibold"><FileText className="h-3.5 w-3.5" />{session.threadName || cleanSessionId(session.sessionId)}</div><p className="mt-1 font-mono text-[9px] text-muted-foreground">{session.threadName ? `${cleanSessionId(session.sessionId)} · ` : ""}{dayjs(session.modifiedAtMs).format("YYYY-MM-DD HH:mm:ss")} · {formatBytes(session.sizeBytes)}</p></td><td className="px-4 py-3"><div className="flex flex-wrap gap-1">{session.models?.length ? session.models.map((model) => { const tone = modelTone(model); return <span key={model} data-model={model} data-model-tone={tone.index} className={`rounded-full border px-2 py-0.5 text-[9px] font-semibold ${tone.className}`}><Cpu className="mr-1 inline h-2.5 w-2.5" />{model}</span>; }) : <span className="text-xs text-muted-foreground">{t("project_modal.no_models")}</span>}</div></td>{[session.totalTokens, session.inputTokens, session.cachedInputTokens, session.outputTokens].map((value, index) => <td key={index} className="px-4 py-3 text-right tabular-nums">{formatNumber(value)}</td>)}<td className="px-4 py-3 text-right font-semibold tabular-nums">{formatCurrency(session.costUSD)}</td></tr>)}</tbody></table></div>}
-        </section>
+  return <div ref={dialogRef} className="fixed inset-0 z-50 flex flex-col overflow-hidden overscroll-contain bg-background text-foreground" role="dialog" aria-modal={isActive ? "true" : undefined} aria-labelledby="modal-project-title" aria-hidden={!isActive} inert={!isActive}>
+    <header className="shrink-0 border-b border-border/70 bg-surface px-4 py-1.5 shadow-sm" data-testid="project-modal-header">
+      <div className="flex min-h-8 items-center gap-2">
+        <Folder className="h-4 w-4 shrink-0 text-primary" />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <h2 id="modal-project-title" className="truncate text-base font-bold tracking-tight">{projectLabel(analytics ?? project)}</h2>
+            {(analytics?.codexProjectName ?? project.codexProjectName) ? <span className="shrink-0 rounded-full border border-indigo-500/20 bg-indigo-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-500">{t("projects.codex_project")}</span> : null}
+          </div>
+          <p className="truncate font-mono text-[10px] text-muted-foreground" title={project.project}>{project.project}</p>
+        </div>
+        <Button variant="secondary" size="sm" className="shrink-0 text-xs" onClick={() => onGoToSessions(project.project)}>{t("project_modal.view_in_sessions_tab")}<ArrowRight className="ml-1.5 h-3.5 w-3.5" /></Button>
+        <Button ref={closeButtonRef} variant="secondary" size="sm" className="h-8 w-8 shrink-0 p-0" onClick={onClose} aria-label={t("project_modal.close_aria")}><X className="h-4 w-4" /></Button>
       </div>
-      <div className="flex items-center justify-between border-t border-border/60 bg-muted/20 px-6 py-4"><Button variant="secondary" size="sm" onClick={onClose}>{t("common.close")}</Button><Button variant="primary" size="sm" onClick={() => onGoToSessions(project.project)}>{t("project_modal.view_in_sessions_tab")}<ArrowRight className="ml-1.5 h-4 w-4" /></Button></div>
+      {analytics && summary && summaryParts ? <>
+        <p className="mt-1 text-[10px] text-muted-foreground">{t("project_modal.analytics_range", { start: analytics.startDate, end: analytics.endDate, timezone: analytics.timezone })}</p>
+        <div className="flex flex-wrap gap-1.5 pt-1 pb-0.5" aria-label={t("project_modal.analytics_title")}>
+          <MetricBadge label={t("project_modal.total_tokens")} value={formatNumber(summary.totalTokens)} icon={<Database className="h-3.5 w-3.5" />} tone="violet" />
+          <MetricBadge label={t("project_modal.input_total")} value={formatNumber(summary.inputTokens)} icon={<Database className="h-3.5 w-3.5" />} tone="blue" />
+          <MetricBadge label={t("projects.values.uncached")} value={formatNumber(summaryParts.nonCachedInput)} icon={<Database className="h-3.5 w-3.5" />} tone="blue" />
+          <MetricBadge label={t("project_modal.cached")} value={formatNumber(summaryParts.cachedInput)} icon={<Database className="h-3.5 w-3.5" />} tone="cyan" />
+          <MetricBadge label={t("project_modal.output")} value={formatNumber(summaryParts.output)} icon={<Database className="h-3.5 w-3.5" />} tone="green" />
+          <MetricBadge label={t("project_modal.estimated_cost")} value={formatCurrency(summary.costUSD)} icon={<Coins className="h-3.5 w-3.5" />} tone="emerald" />
+          <MetricBadge label={t("project_modal.cache_hit")} value={formatPercent(cacheHitRate)} icon={<Database className="h-3.5 w-3.5" />} tone="cyan" />
+          <MetricBadge label={t("common.sessions")} value={sessionsLoading || sessionsError ? "—" : formatNumber(rangeSessionCount)} icon={<Terminal className="h-3.5 w-3.5" />} tone="amber" />
+        </div>
+      </> : null}
+    </header>
+    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 [overflow-anchor:none]" data-testid="project-modal-scroll">
+      {analyticsLoading ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">{t("project_modal.analytics_loading")}</div>
+        : analyticsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{t("project_modal.analytics_error")}: {analyticsError}</div>
+          : analytics ? (
+          <Card className="overflow-hidden" data-testid="project-daily-trend">
+            <CardHeader className="flex flex-row items-start justify-between gap-3 border-b border-border/80">
+              <div><CardTitle>{t("project_modal.daily_trend")}</CardTitle><CardDescription>{t("project_modal.daily_trend_desc")}</CardDescription></div>
+              <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground" aria-label={t("project_modal.daily_trend")}>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-blue-600/75" />{t("project_modal.input")}</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-success/80" />{t("project_modal.cached")}</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-violet-600/70" />{t("project_modal.output")}</span>
+                <span className="inline-flex items-center gap-1.5"><i className="h-2 w-2 rounded-full bg-primary" />{t("common.cost")}</span>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3.5">
+              {trendData.every((day) => day.totalTokens === 0 && day.costUSD === 0) ? <p className="py-16 text-center text-sm text-muted-foreground">{t("project_modal.no_trend_data")}</p> : <div className="h-64 min-w-0"><ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}><ComposedChart data={trendData} barGap={4} barCategoryGap="32%" margin={{ top: 18, right: 10, left: 4, bottom: 6 }}>
+                <defs><linearGradient id="projectCostGradient" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgb(var(--primary))" stopOpacity={0.1} /><stop offset="80%" stopColor="rgb(var(--primary))" stopOpacity={0} /></linearGradient></defs>
+                <CartesianGrid stroke="rgb(var(--border) / 0.45)" strokeDasharray="3 8" vertical={false} />
+                <XAxis dataKey="shortDate" dy={10} interval="preserveStartEnd" minTickGap={12} tickLine={false} axisLine={false} tick={{ fill: "rgb(var(--muted-foreground) / 0.72)", fontSize: 11 }} />
+                <YAxis yAxisId="tokens" width={tokenAxisWidth} tickLine={false} axisLine={false} tick={{ fill: "rgb(var(--muted-foreground) / 0.7)", fontSize: 11 }} tickFormatter={(value) => formatCompactNumber(Number(value))} />
+                <YAxis yAxisId="cost" orientation="right" width={costAxisWidth} tickLine={false} axisLine={false} tick={{ fill: "rgb(var(--primary) / 0.78)", fontSize: 11 }} tickFormatter={(value) => formatCurrencyShort(Number(value))} />
+                <Tooltip content={<TrendTooltip t={t} />} cursor={{ stroke: "rgb(var(--primary) / 0.22)", strokeDasharray: "4 4", strokeWidth: 1 }} />
+                <Area yAxisId="cost" type="monotone" dataKey="costUSD" fill="url(#projectCostGradient)" stroke="none" activeDot={false} isAnimationActive={false} />
+                <Bar yAxisId="tokens" dataKey="nonCachedInputTokens" stackId="tokens" fill="rgb(37 99 235 / 0.72)" maxBarSize={24} isAnimationActive={false} />
+                <Bar yAxisId="tokens" dataKey="cachedInputTokens" stackId="tokens" fill="rgb(var(--success) / 0.78)" maxBarSize={24} isAnimationActive={false} />
+                <Bar yAxisId="tokens" dataKey="outputTokens" stackId="tokens" fill="rgb(124 58 237 / 0.72)" maxBarSize={24} radius={[5, 5, 0, 0]} isAnimationActive={false} />
+                <Line yAxisId="cost" type="monotone" dataKey="costUSD" stroke="rgb(var(--primary))" strokeWidth={2.75} dot={{ r: 2.8, strokeWidth: 1.5, fill: "rgb(var(--surface))" }} activeDot={{ r: 5.5, strokeWidth: 2.25, fill: "rgb(var(--surface))" }} isAnimationActive={false} />
+              </ComposedChart></ResponsiveContainer></div>}
+            </CardContent>
+          </Card>
+          ) : <div className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">{t("project_modal.no_analytics")}</div>}
+      <section aria-labelledby="project-sessions-title" className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h3 id="project-sessions-title" className="text-sm font-bold">{t("project_modal.sessions_list")}</h3>
+            <p className="text-xs text-muted-foreground">{t("project_modal.subtitle_desc")}</p>
+            {searchQuery ? <p className="text-xs text-muted-foreground">{t("project_modal.showing_filtered", { filtered: new Set(filteredSessions.map((session) => session.path)).size })}</p> : null}
+          </div>
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+            <input aria-label={t("project_modal.search_aria")} value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder={t("project_modal.search_placeholder")} className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-xs outline-none focus:ring-2 focus:ring-primary/30" />
+          </div>
+        </div>
+        {sessionsLoading ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">{t("loading.loading_sessions")}</div>
+          : sessionsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{sessionsError}</div>
+            : filteredSessions.length === 0 ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><Terminal className="mx-auto h-6 w-6 text-muted-foreground" /><p className="mt-2 text-sm font-medium">{searchQuery ? t("project_modal.no_matching_sessions") : t("project_modal.no_sessions")}</p></div>
+              : <SessionUsageTable sessions={filteredSessions} selectedProject={project.project} onSessionClick={onSessionClick} embedded />}
+      </section>
     </div>
   </div>;
 }

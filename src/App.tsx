@@ -141,8 +141,8 @@ export default function App() {
     <div className="min-h-screen bg-background text-foreground">
       <div
         className="relative mx-auto flex min-h-screen w-full max-w-layout flex-col px-6 pb-8 pt-3 sm:px-8 lg:px-10"
-        aria-hidden={selectedSession || isResetHistoryOpen ? "true" : undefined}
-        inert={selectedSession || isResetHistoryOpen ? true : undefined}
+        aria-hidden={selectedProjectForModal || selectedSession || isResetHistoryOpen ? "true" : undefined}
+        inert={selectedProjectForModal || selectedSession || isResetHistoryOpen ? true : undefined}
       >
         <div
           aria-hidden="true"
@@ -444,22 +444,24 @@ export default function App() {
             <LogPanel isActive={!isLoading && view === "logs"} />
           </div>
 
-          {selectedProjectForModal && (
-            <ProjectSessionsModal
-              project={selectedProjectForModal}
-              range={range}
-              onClose={() => setSelectedProjectForModal(null)}
-              onGoToSessions={(projectPath) => {
-                setSelectedProjectForModal(null);
-                setSelectedProjectFilter(projectPath);
-                setSelectedSessionDate(null);
-                void handleViewChange("sessions");
-              }}
-            />
-          )}
 
         </main>
       </div>
+      {selectedProjectForModal && (
+        <ProjectSessionsModal
+          project={selectedProjectForModal}
+          range={range}
+          onSessionClick={setSelectedSession}
+          isActive={!selectedSession && !isResetHistoryOpen}
+          onClose={() => setSelectedProjectForModal(null)}
+          onGoToSessions={(projectPath) => {
+            setSelectedProjectForModal(null);
+            setSelectedProjectFilter(projectPath);
+            setSelectedSessionDate(null);
+            void handleViewChange("sessions");
+          }}
+        />
+      )}
       {selectedSession && (
         <SessionDetailModal
           session={selectedSession}

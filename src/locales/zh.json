@@ -411,7 +411,7 @@
     "project_details": "项目详情",
     "active_files": "个活动文件",
     "showing_filtered": "当前显示 {{filtered}} 个匹配会话",
-    "subtitle_desc": "写入该目录的各个独立会话记录",
+    "subtitle_desc": "该项目的全部历史会话，包含所选统计范围之外的会话。",
     "search_placeholder": "搜索概要名、会话 ID、模型或项目...",
     "no_matching_sessions": "没有找到符合搜索条件的会话",
     "clear_search_hint": "尝试清空搜索框或搜索其他关键词。",
@@ -425,12 +425,11 @@
     "total_tokens": "总 Token",
     "input_total": "输入（含缓存）",
     "cache_hit": "缓存命中率",
-    "model_share": "模型 Token 占比",
-    "model_share_desc": "按总 Token 展示模型占比；超过六个模型时合并为“其他”。",
-    "no_model_data": "此项目暂无模型 Token 数据。",
     "daily_trend": "每日 Token 与成本趋势",
     "daily_trend_desc": "Token 构成使用堆叠柱，成本使用独立右轴。",
     "no_trend_data": "此时间范围内没有每日活动。",
+    "analytics_range": "统计日期：{{start}} – {{end}} · {{timezone}}",
+    "close_aria": "关闭项目详情",
     "search_aria": "搜索项目会话"
   },
   "ranges": {

@@ -454,7 +454,7 @@
     "project_details": "プロジェクトの詳細",
     "active_files": "アクティブなファイル",
     "showing_filtered": "一致する{{filtered}}件のセッションを表示中",
-    "subtitle_desc": "このディレクトリに記録された個々のセッション",
+    "subtitle_desc": "選択した集計期間外のセッションも含む、このプロジェクトの全履歴セッション。",
     "search_placeholder": "タイトル、セッション ID、モデル、またはプロジェクトを検索します...",
     "no_matching_sessions": "検索クエリに一致するセッションはありません",
     "clear_search_hint": "検索クエリをクリアするか、別の用語を検索してみてください。",
@@ -468,12 +468,11 @@
     "total_tokens": "総トークン数",
     "input_total": "入力（キャッシュを含む）",
     "cache_hit": "キャッシュヒット率",
-    "model_share": "モデルトークンシェア",
-    "model_share_desc": "モデルごとの総トークンのシェア。最初の 6 つ以降のモデルは「その他」としてグループ化されます。",
-    "no_model_data": "このプロジェクトにはモデル トークン データがありません。",
     "daily_trend": "日別トークンとコストの推移",
     "daily_trend_desc": "独立した右軸にコストを伴うスタックされたトークン構成。",
     "no_trend_data": "この範囲に日別のアクティビティはありません。",
+    "analytics_range": "集計期間：{{start}} – {{end}} · {{timezone}}",
+    "close_aria": "プロジェクト詳細を閉じる",
     "search_aria": "プロジェクト セッションを検索する"
   },
   "ranges": {

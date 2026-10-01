@@ -411,7 +411,7 @@
     "project_details": "Project Details",
     "active_files": "active files",
     "showing_filtered": "Showing {{filtered}} matching sessions",
-    "subtitle_desc": "Individual sessions writing to this directory",
+    "subtitle_desc": "All historical sessions for this project, including sessions outside the selected analytics range.",
     "search_placeholder": "Search title, session ID, model, or project...",
     "no_matching_sessions": "No sessions match your search query",
     "clear_search_hint": "Try clearing your search query or searching for another term.",
@@ -425,12 +425,11 @@
     "total_tokens": "Total tokens",
     "input_total": "Input (including cache)",
     "cache_hit": "Cache hit rate",
-    "model_share": "Model token share",
-    "model_share_desc": "Share of total tokens by model; models after the first six are grouped as Other.",
-    "no_model_data": "No model token data for this project.",
     "daily_trend": "Daily token and cost trend",
     "daily_trend_desc": "Stacked token composition with cost on an independent right axis.",
     "no_trend_data": "No daily activity in this range.",
+    "analytics_range": "Statistics: {{start}} – {{end}} · {{timezone}}",
+    "close_aria": "Close project details",
     "search_aria": "Search project sessions"
   },
   "ranges": {

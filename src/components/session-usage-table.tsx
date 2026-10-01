@@ -23,6 +23,7 @@ type SessionUsageTableProps = {
   selectedProject?: string | null;
   onClearProjectFilter?: () => void;
   onSessionClick?: (session: SessionDetailRow) => void;
+  embedded?: boolean;
 };
 
 function formatBytes(bytes: number) {
@@ -320,6 +321,7 @@ export function SessionUsageTable({
   selectedProject = null,
   onClearProjectFilter,
   onSessionClick,
+  embedded = false,
 }: SessionUsageTableProps) {
   const { t, i18n } = useTranslation();
   // Track which date groups are collapsed
@@ -448,8 +450,8 @@ export function SessionUsageTable({
     if (collapsedDates[date] !== undefined) {
       return collapsedDates[date];
     }
-    // If filtering by project, expand all groups by default
-    if (selectedProject) {
+    // Embedded project lists expand all groups by default.
+    if (selectedProject || embedded) {
       return false;
     }
     const firstDate = groups[0]?.date;
@@ -474,7 +476,7 @@ export function SessionUsageTable({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-1">
+      {!embedded ? <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between px-1">
         <div>
           <h2 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
             {t("sessions.title")}
@@ -486,9 +488,9 @@ export function SessionUsageTable({
             {t("sessions.subtitle")}
           </p>
         </div>
-      </div>
+      </div> : null}
 
-      {selectedProject && (
+      {!embedded && selectedProject && (
         <div className="flex items-center justify-between gap-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-4 backdrop-blur-md transition-all duration-300">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/15">
@@ -754,7 +756,11 @@ export function SessionUsageTable({
                         aria-label={onSessionClick ? t("sessions.open_session", { title }) : undefined}
                         data-testid="session-card"
                         data-language={i18n.language.startsWith("zh") ? "zh" : "en"}
-                        onClick={() => onSessionClick?.(session.originalSession)}
+                        onClick={(event) => {
+                          if (!onSessionClick) return;
+                          event.currentTarget.focus({ preventScroll: true });
+                          onSessionClick(session.originalSession);
+                        }}
                         onKeyDown={(event) => {
                           if (!onSessionClick) return;
                           if (event.key === "Enter" || event.key === " ") {

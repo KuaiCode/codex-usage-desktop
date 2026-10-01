@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { StrictMode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import App from "./App";
 import i18n from "./i18n";
 import tauriConfig from "../src-tauri/tauri.conf.json";
@@ -1088,6 +1088,89 @@ describe("App", () => {
     expect(screen.queryByRole("status", { name: "Loading Session Details" })).not.toBeInTheDocument();
     expect(screen.getByText("No session logs match the current search filters.")).toBeInTheDocument();
     expect(sessionFetchCount).toBe(2);
+  });
+
+  it("opens project sessions in StrictMode and restores focus and project state", async () => {
+    const focus = HTMLElement.prototype.focus;
+    // jsdom does not prevent focusing inert elements like the native WebView does.
+    const focusSpy = vi.spyOn(HTMLElement.prototype, "focus").mockImplementation(function (this: HTMLElement, options) {
+      if (!this.closest("[inert]")) focus.call(this, options);
+    });
+    onTestFinished(() => focusSpy.mockRestore());
+    const project = { project: "/repo/app", displayName: "app", inputTokens: 100, cachedInputTokens: 20, outputTokens: 40, totalTokens: 140, costUSD: 0.001 };
+    const day = { date: "2026-06-11", inputTokens: 100, cachedInputTokens: 20, outputTokens: 40, reasoningOutputTokens: 0, totalTokens: 140, costUSD: 0.001, models: ["gpt-5"], projects: [project.project] };
+    const row = {
+      path: "/tmp/project-session.jsonl", sessionId: "project-session", threadName: "Project task",
+      modifiedAtMs: Date.parse("2026-06-11T00:00:00Z"), sizeBytes: 1024,
+      ...day, dailyUsage: [day, { ...day, date: "2026-06-10" }],
+    };
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "scan_usage") return scan(0);
+      if (command === "fetch_overview") return { ...overview(), projects: [project] };
+      if (command === "fetch_codex_limits") return limits(80);
+      if (command === "check_for_updates") return { hasUpdate: false };
+      if (command === "fetch_session_details") return [row];
+      if (command === "fetch_project_analytics") return {
+        project: project.project, displayName: "app", range: "30d", startDate: "2026-05-13", endDate: "2026-06-11", timezone: "UTC",
+        summary: project, daily: [day], models: [],
+      };
+      if (command === "fetch_session_detail") throw new Error("Replay unavailable");
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+    const user = userEvent.setup();
+    render(<StrictMode><App /></StrictMode>);
+    await user.click(await screen.findByRole("tab", { name: "Project" }));
+    const trigger = await screen.findByRole("button", { name: "Open analytics for app" });
+    fireEvent.click(trigger);
+    const projectDialog = await screen.findByRole("dialog", { name: "app" });
+    const background = screen.getByRole("tab", { name: "Project", hidden: true }).closest("[inert]");
+    expect(background).toHaveAttribute("aria-hidden", "true");
+    expect(projectDialog.closest("[inert]")).toBeNull();
+    const close = within(projectDialog).getByRole("button", { name: "Close project details" });
+    expect(close).toHaveFocus();
+    await user.tab();
+    const search = within(projectDialog).getByRole("textbox", { name: "Search project sessions" });
+    expect(search).toHaveFocus();
+    await user.type(search, "Project task");
+    const olderGroup = projectDialog.querySelector('#date-group-2026-06-10')!;
+    const collapse = within(olderGroup as HTMLElement).getAllByRole("button")[0];
+    await user.click(collapse);
+    const card = within(projectDialog).getByText("Project task", { selector: "h3" }).closest("article")!;
+    collapse.focus();
+    await user.tab();
+    const sessionsButton = within(projectDialog).getByRole("button", { name: "View in Sessions Tab" });
+    expect(sessionsButton).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(collapse).toHaveFocus();
+    const scroll = within(projectDialog).getByTestId("project-modal-scroll");
+    scroll.scrollTop = 250;
+    fireEvent.click(card);
+    const detail = await screen.findByRole("dialog", { name: "Project task" });
+    expect(within(detail).getByRole("button", { name: "Close session detail" })).toHaveFocus();
+    await user.tab();
+    expect(within(detail).getByRole("button", { name: "Details" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(within(detail).getByRole("button", { name: "Close session detail" })).toHaveFocus();
+    expect(invokeMock).toHaveBeenCalledWith("fetch_session_detail", { path: row.path });
+    expect(projectDialog).toHaveAttribute("inert");
+    expect(projectDialog).toHaveAttribute("aria-hidden", "true");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Project task" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "app" })).toBe(projectDialog);
+    expect(card).toHaveFocus();
+    expect(search).toHaveValue("Project task");
+    expect(collapse).toHaveAttribute("aria-expanded", "false");
+    expect(scroll.scrollTop).toBe(250);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(background).not.toHaveAttribute("inert");
+    expect(document.body.style.overflow).toBe("");
+    await user.click(trigger);
+    await user.click(await screen.findByRole("button", { name: "View in Sessions Tab" }));
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Sessions" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByText("Filtering by Project")).toBeInTheDocument();
   });
 
   it("opens a session replay modal from a session row", async () => {

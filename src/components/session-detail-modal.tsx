@@ -11,6 +11,8 @@ import { fetchSessionDetail, revealInFileManager, type SessionDetailRow, type Se
 import { formatCurrency, formatNumber, formatPercent } from "@/lib/formatters";
 import { projectLabel, sessionProjectReferences } from "@/lib/project-reference";
 import { SessionQuotaUsageView } from "./session-quota-usage";
+import { MetricBadge } from "./metric-badge";
+import { useModalFocus } from "@/hooks/use-modal-focus";
 
 type SessionDetailModalProps = {
   session: SessionDetailRow;
@@ -201,26 +203,6 @@ function CopyContentButton({ content }: { content: string }) {
       {copied ? <Check className="h-3 w-3" /> : <Clipboard className="h-3 w-3" />}
       {t(copied ? "sessions.detail.copied" : "sessions.detail.copy")}
     </button>
-  );
-}
-
-const METRIC_TONES = {
-  blue: "border-blue-300/60 bg-blue-50/80 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
-  violet: "border-violet-300/60 bg-violet-50/80 text-violet-700 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300",
-  emerald: "border-emerald-300/60 bg-emerald-50/80 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
-  cyan: "border-cyan-300/60 bg-cyan-50/80 text-cyan-700 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300",
-  amber: "border-amber-300/60 bg-amber-50/80 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-  green: "border-green-300/60 bg-green-50/80 text-green-700 dark:border-green-800 dark:bg-green-950/40 dark:text-green-300",
-  red: "border-red-300/60 bg-red-50/80 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300",
-} as const;
-
-function metric(label: string, value: string, icon: ReactNode, tone: keyof typeof METRIC_TONES) {
-  return (
-    <div className={`flex min-w-max items-center justify-center gap-1.5 rounded-md border px-2 py-1 ${METRIC_TONES[tone]}`}>
-      <span className="shrink-0">{icon}</span>
-      <span className="text-[10px] font-medium opacity-75">{label}</span>
-      <span className="font-mono text-xs font-bold tabular-nums">{value}</span>
-    </div>
   );
 }
 
@@ -1164,22 +1146,11 @@ export function SessionDetailModal({ session, onClose }: SessionDetailModalProps
   const dialogRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const turnRefs = useRef(new Map<string, HTMLElement>());
-  const previousFocusRef = useRef<HTMLElement | null>(null);
+  useModalFocus(dialogRef, closeButtonRef, onClose);
 
   useEffect(() => {
     setActivePath(session.path);
   }, [session.path]);
-
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-    previousFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.body.style.overflow = "hidden";
-    closeButtonRef.current?.focus();
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      previousFocusRef.current?.focus();
-    };
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1213,44 +1184,6 @@ export function SessionDetailModal({ session, onClose }: SessionDetailModalProps
       cancelled = true;
     };
   }, [activePath]);
-
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-        return;
-      }
-
-      if (event.key !== "Tab") return;
-
-      const dialog = dialogRef.current;
-      if (!dialog) return;
-
-      const focusableElements = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-
-      if (focusableElements.length === 0) {
-        event.preventDefault();
-        return;
-      }
-
-      const first = focusableElements[0];
-      const last = focusableElements[focusableElements.length - 1];
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
 
   const cacheRate = useMemo(() => {
     const inputTokens = detail?.summary.inputTokens ?? session.inputTokens;
@@ -1371,15 +1304,15 @@ export function SessionDetailModal({ session, onClose }: SessionDetailModalProps
           >
           <section ref={summaryRef} aria-label={t("sessions.detail.session_summary")} className="min-h-0 overflow-hidden bg-surface">
           <div className="flex flex-wrap gap-1.5 pt-1 pb-0.5">
-            {metric(t("sessions.detail.duration"), formatDuration(detail?.summary.durationMs), <Clock3 className="h-3.5 w-3.5" />, "blue")}
-            {metric(t("sessions.detail.total_tokens"), formatNumber(detail?.summary.totalTokens ?? session.totalTokens), <Database className="h-3.5 w-3.5" />, "violet")}
-            {metric(t("sessions.detail.input_tokens"), formatNumber(detail?.summary.inputTokens ?? session.inputTokens), <Database className="h-3.5 w-3.5" />, "blue")}
-            {metric(t("sessions.detail.output_tokens"), formatNumber(detail?.summary.outputTokens ?? session.outputTokens), <Database className="h-3.5 w-3.5" />, "green")}
-            {metric(t("sessions.detail.cost"), formatCurrency(detail?.summary.costUSD ?? session.costUSD), <Coins className="h-3.5 w-3.5" />, "emerald")}
-            {metric(t("sessions.detail.cache"), formatPercent(cacheRate), <Database className="h-3.5 w-3.5" />, "cyan")}
-            {metric(t("sessions.detail.tool_calls"), formatNumber(detail?.summary.toolCallCount ?? 0), <Wrench className="h-3.5 w-3.5" />, "amber")}
-            {metric(t("sessions.detail.patches"), formatNumber(detail?.summary.patchCount ?? 0), <FileDiff className="h-3.5 w-3.5" />, "green")}
-            {metric(t("sessions.detail.errors"), formatNumber(detail?.summary.errorCount ?? 0), <AlertTriangle className="h-3.5 w-3.5" />, "red")}
+            <MetricBadge label={t("sessions.detail.duration")} value={formatDuration(detail?.summary.durationMs)} icon={<Clock3 className="h-3.5 w-3.5" />} tone="blue" />
+            <MetricBadge label={t("sessions.detail.total_tokens")} value={formatNumber(detail?.summary.totalTokens ?? session.totalTokens)} icon={<Database className="h-3.5 w-3.5" />} tone="violet" />
+            <MetricBadge label={t("sessions.detail.input_tokens")} value={formatNumber(detail?.summary.inputTokens ?? session.inputTokens)} icon={<Database className="h-3.5 w-3.5" />} tone="blue" />
+            <MetricBadge label={t("sessions.detail.output_tokens")} value={formatNumber(detail?.summary.outputTokens ?? session.outputTokens)} icon={<Database className="h-3.5 w-3.5" />} tone="green" />
+            <MetricBadge label={t("sessions.detail.cost")} value={formatCurrency(detail?.summary.costUSD ?? session.costUSD)} icon={<Coins className="h-3.5 w-3.5" />} tone="emerald" />
+            <MetricBadge label={t("sessions.detail.cache")} value={formatPercent(cacheRate)} icon={<Database className="h-3.5 w-3.5" />} tone="cyan" />
+            <MetricBadge label={t("sessions.detail.tool_calls")} value={formatNumber(detail?.summary.toolCallCount ?? 0)} icon={<Wrench className="h-3.5 w-3.5" />} tone="amber" />
+            <MetricBadge label={t("sessions.detail.patches")} value={formatNumber(detail?.summary.patchCount ?? 0)} icon={<FileDiff className="h-3.5 w-3.5" />} tone="green" />
+            <MetricBadge label={t("sessions.detail.errors")} value={formatNumber(detail?.summary.errorCount ?? 0)} icon={<AlertTriangle className="h-3.5 w-3.5" />} tone="red" />
           </div>
           {showDetails ? (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-1.5 text-[11px] text-muted-foreground">

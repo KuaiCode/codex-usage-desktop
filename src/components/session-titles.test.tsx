@@ -86,6 +86,20 @@ function replayAgent(overrides: Partial<SessionReplayDetail["agents"][number]>):
 }
 
 describe("session daily usage", () => {
+  it("hides duplicate embedded controls while keeping project filtering and date expansion", () => {
+    const recent = session({ path: "/tmp/recent.jsonl", threadName: "Recent" });
+    const historical = session({ path: "/tmp/history.jsonl", threadName: "Historical", dailyUsage: [{ ...recent.dailyUsage[0], date: "2026-01-01" }] });
+    const other = session({ path: "/tmp/other.jsonl", threadName: "Other project", projects: ["/repo/other"], dailyUsage: [{ ...recent.dailyUsage[0], projects: ["/repo/other"] }] });
+    const { rerender } = render(<SessionUsageTable sessions={[recent, historical, other]} selectedProject="/repo/app" embedded />);
+    expect(screen.getByText("Recent")).toBeInTheDocument();
+    expect(screen.getByText("Historical")).toBeInTheDocument();
+    expect(screen.queryByText("Other project")).not.toBeInTheDocument();
+    expect(screen.queryByText("Session Usage Details")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear Filters" })).not.toBeInTheDocument();
+    rerender(<SessionUsageTable sessions={[recent, historical]} embedded />);
+    expect(screen.getByText("Historical")).toBeInTheDocument();
+  });
+
   it("shows an optional Codex project label without changing the cwd", () => {
     render(<SessionUsageTable sessions={[session({
       projectReferences: [{
@@ -847,16 +861,14 @@ describe("session titles", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Alpha launch notes")).toBeInTheDocument());
-    const breakdown = screen.getByText("Uncached").closest("dl")!;
-    expect(within(breakdown).getByText("160")).toBeInTheDocument();
-    expect(within(breakdown).getByText("200")).toBeInTheDocument();
-    expect(within(breakdown).getByText("40")).toBeInTheDocument();
-    expect(within(breakdown).getByText("80")).toBeInTheDocument();
-    const sessionsTableContainer = screen.getByRole("table").parentElement!;
-    expect(sessionsTableContainer).toHaveClass("overflow-x-auto");
-    expect(sessionsTableContainer).not.toHaveClass("overflow-auto", "max-h-[36vh]");
+    const header = screen.getByTestId("project-modal-header");
+    for (const [label, value] of [["Uncached", "160"], ["Input (including cache)", "200"], ["Cached", "40"], ["Output", "80"]]) {
+      expect(within(header).getByText(label).parentElement).toHaveTextContent(value);
+    }
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Session Usage Details" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Model token share")).not.toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("fetch_project_analytics", { project: "/repo/app", range: "30d" });
-    expect(screen.getByText("Other")).toBeInTheDocument();
     expect(screen.getByText("Daily token and cost trend")).toBeInTheDocument();
     await userEvent.type(screen.getByPlaceholderText("Search title, session ID, model, or project..."), "alpha launch");
 
@@ -872,6 +884,7 @@ describe("session titles", () => {
         sessionId: "codex-id.jsonl",
         threadName: "Usage work",
         projects: ["/repo/codex-usage-desktop"],
+        dailyUsage: [{ ...session({}).dailyUsage[0], projects: ["/repo/codex-usage-desktop"] }],
         projectReferences: [{
           path: "/repo/codex-usage-desktop",
           displayName: "codex-usage-desktop",
@@ -909,6 +922,83 @@ describe("session titles", () => {
     expect(await screen.findByText("Available session")).toBeInTheDocument();
     expect(await screen.findByText(/analytics offline/)).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Search title, session ID, model, or project...")).toBeEnabled();
+  });
+
+  it("keeps historical project sessions isolated and counts each in-range session once", async () => {
+    const recent = session({ path: "/tmp/recent.jsonl", threadName: "Recent work" });
+    const earlierDay = { ...recent.dailyUsage[0], date: "2026-07-14" };
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "fetch_session_details") return [
+        { ...recent, dailyUsage: [...recent.dailyUsage, earlierDay] },
+        session({ path: "/tmp/history.jsonl", threadName: "Historical work", dailyUsage: [{ ...earlierDay, date: "2026-01-01" }] }),
+        session({ path: "/tmp/other.jsonl", threadName: "Other project", projects: ["/repo/other"], dailyUsage: [{ ...earlierDay, projects: ["/repo/other"] }] }),
+      ];
+      if (command === "fetch_project_analytics") return {
+        project: "/repo/app", displayName: "app", range: "7d", startDate: "2026-07-10", endDate: "2026-07-16", timezone: "UTC",
+        summary: { project: "/repo/app", displayName: "app", inputTokens: 100, cachedInputTokens: 20, outputTokens: 40, totalTokens: 140, costUSD: 0.001 },
+        models: [], daily: [],
+      };
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+    const onSessionClick = vi.fn();
+    render(<ProjectSessionsModal project={{ project: "/repo/app", displayName: "app", totalTokens: 140, costUSD: 0.001 }} range="7d" onClose={vi.fn()} onGoToSessions={vi.fn()} onSessionClick={onSessionClick} />);
+
+    expect(await screen.findByText("Historical work")).toBeInTheDocument();
+    expect(screen.getAllByText("Recent work", { selector: "h3" })).toHaveLength(2);
+    expect(screen.queryByText("Other project")).not.toBeInTheDocument();
+    expect(screen.getByText("Sessions", { selector: "header span" }).parentElement).toHaveTextContent("Sessions1");
+    expect(screen.getByText(/All historical sessions/)).toBeInTheDocument();
+    expect(screen.getByText("Statistics: 2026-07-10 – 2026-07-16 · UTC")).toBeInTheDocument();
+    const historicalGroup = screen.getByText("Historical work").closest<HTMLElement>('[id^="date-group-"]')!;
+    const dateToggle = within(historicalGroup).getAllByRole("button")[0];
+    expect(dateToggle).toHaveAttribute("aria-expanded", "true");
+    await userEvent.click(dateToggle);
+    expect(screen.queryByText("Historical work")).not.toBeInTheDocument();
+    await userEvent.click(dateToggle);
+    await userEvent.click(screen.getByText("Historical work"));
+    expect(onSessionClick.mock.calls[0][0]).toMatchObject({ path: "/tmp/history.jsonl", totalTokens: 140 });
+  });
+
+  it("reuses subagent expansion and searches session IDs, models and project paths", async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "fetch_project_analytics") throw new Error("analytics offline");
+      if (command === "fetch_session_details") return [
+        session({ path: "/tmp/root.jsonl", sessionId: "root-id.jsonl", threadName: "Root task", agentSessionId: "root" }),
+        session({ path: "/tmp/child.jsonl", threadName: "Child task", agentSessionId: "child", parentSessionId: "root", agentDepth: 1 }),
+        session({ path: "/tmp/second.jsonl", threadName: "Second child", agentSessionId: "second", parentSessionId: "root", agentDepth: 1 }),
+      ];
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+    render(<ProjectSessionsModal project={{ project: "/repo/app", displayName: "app", totalTokens: 420, costUSD: 0.003 }} range="7d" onClose={vi.fn()} onGoToSessions={vi.fn()} />);
+    expect(await screen.findByText("Root task")).toBeInTheDocument();
+    expect(screen.queryByText("Second child")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByTestId("subagent-summary"));
+    expect(screen.getByText("Second child")).toBeInTheDocument();
+    const search = screen.getByRole("textbox", { name: "Search project sessions" });
+    for (const query of ["ROOT-ID", "gpt-5", "/repo/app"]) {
+      await userEvent.clear(search);
+      await userEvent.type(search, query);
+      expect(screen.getByText("Root task")).toBeInTheDocument();
+    }
+    await userEvent.clear(search);
+    await userEvent.type(search, "missing");
+    expect(screen.getByText("No sessions match your search query")).toBeInTheDocument();
+  });
+
+  it.each(["empty", "error", "loading"])("shows the %s session state independently of analytics", async (state) => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === "fetch_project_analytics") throw new Error("analytics offline");
+      if (command === "fetch_session_details") {
+        if (state === "error") throw new Error("sessions offline");
+        if (state === "loading") return new Promise(() => {});
+        return [];
+      }
+      throw new Error(`Unexpected invoke: ${command}`);
+    });
+    render(<ProjectSessionsModal project={{ project: "/repo/app", displayName: "app", totalTokens: 0, costUSD: 0 }} range="7d" onClose={vi.fn()} onGoToSessions={vi.fn()} />);
+    const expected = state === "empty" ? "No sessions found for this project." : state === "error" ? "sessions offline" : "Loading Session Details";
+    expect(await screen.findByText(expected)).toBeInTheDocument();
+    expect(await screen.findByText(/analytics offline/)).toBeInTheDocument();
   });
 
   it("shows the Codex project name in session details while retaining the cwd", async () => {
