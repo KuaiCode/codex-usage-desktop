@@ -7,16 +7,16 @@ const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 export const config: WebdriverIO.Config = {
   onPrepare() {
+    const started = Date.now();
+    console.log("[e2e] Building the native test app...");
     const result = spawnSync(pnpmCommand, ["test:e2e:build"], {
-      encoding: "utf8",
-      maxBuffer: 50 * 1024 * 1024,
+      stdio: "inherit",
     });
 
     if (result.status !== 0) {
-      process.stdout.write(result.stdout ?? "");
-      process.stderr.write(result.stderr ?? "");
       throw result.error ?? new Error(`E2E build failed with status ${result.status}`);
     }
+    console.log(`[e2e] Build completed in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   },
   runner: "local",
   tsConfigPath: "./tsconfig.e2e.json",
@@ -37,8 +37,8 @@ export const config: WebdriverIO.Config = {
   reporters: ["spec"],
   logLevel: "error",
   waitforTimeout: 10_000,
-  connectionRetryTimeout: 90_000,
-  connectionRetryCount: 3,
+  connectionRetryTimeout: 15_000,
+  connectionRetryCount: 0,
   mochaOpts: {
     ui: "bdd",
     timeout: 60_000,

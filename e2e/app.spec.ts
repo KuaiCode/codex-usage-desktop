@@ -11,6 +11,13 @@ describe("Codex Usage Desktop page", () => {
     expect(hasTauriRuntime).toBe(true);
   });
 
+  it("initializes the WDIO frontend bridge for native commands", async () => {
+    const windows = await browser.tauri.execute(({ core }) =>
+      core.invoke("plugin:wdio|list_windows"),
+    );
+    expect(windows).toContain("main");
+  }).timeout(10_000);
+
   it("shows both 24-hour and 48-hour reset probabilities", async () => {
     const forecast = $('[data-testid="quota-forecast"]');
     const forecast24h = $('[data-forecast-horizon="24h"]');
