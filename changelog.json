@@ -1,4 +1,8 @@
 {
+  "3.10.0": {
+    "zh": "- fix(e2e): initialize the WDIO frontend bridge\n- feat: redesign project module",
+    "en": "- fix(e2e): initialize the WDIO frontend bridge\n- feat: redesign project module"
+  },
   "3.9.1": {
     "zh": "- fix(release): base changelogs on published GitHub releases\n- feat: use proxy during update checks",
     "en": "- fix(release): base changelogs on published GitHub releases\n- feat: use proxy during update checks"
