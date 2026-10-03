@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import dayjs from "dayjs";
 import { ArrowRight, Coins, Database, Folder, Search, Terminal, X } from "lucide-react";
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
@@ -52,6 +53,7 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
   const [moreError, setMoreError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const daysRequest = useRef<{ key: string; promise: Promise<ProjectSessionDaysResponse> } | null>(null);
+  const loadedRange = useRef({ project: project.project, initialRange: range, range });
   const requestGeneration = useRef(0);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
@@ -90,9 +92,11 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
     setSessionsError(null);
     setLoadingMore(false);
     setMoreError(null);
-    const key = JSON.stringify([project.project, range, query]);
+    const requestedRange = loadedRange.current.project === project.project && loadedRange.current.initialRange === range ? loadedRange.current.range : range;
+    loadedRange.current = { project: project.project, initialRange: range, range: requestedRange };
+    const key = JSON.stringify([project.project, requestedRange, query]);
     if (daysRequest.current?.key !== key) {
-      daysRequest.current = { key, promise: fetchProjectSessionDays(project.project, range, query) };
+      daysRequest.current = { key, promise: fetchProjectSessionDays(project.project, requestedRange, query) };
     }
     void daysRequest.current.promise.then((data) => {
       if (active) setSessionDays(data);
@@ -103,14 +107,23 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
   }, [project.project, range, query]);
 
   async function loadMoreDays() {
-    if (!sessionDays?.nextBefore || loadingMore) return;
+    if (!sessionDays || loadingMore || analyticsLoading) return;
     const generation = requestGeneration.current;
+    const days = dayjs(sessionDays.endDate).diff(dayjs(sessionDays.startDate), "day") + 1;
+    const start = dayjs(sessionDays.startDate).subtract(days, "day").format("YYYY-MM-DD");
+    const nextRange = `custom:${start}_${sessionDays.endDate}`;
     setLoadingMore(true);
     setMoreError(null);
     try {
-      const data = await fetchProjectSessionDays(project.project, range, query, sessionDays.nextBefore);
+      const [data, nextAnalytics] = await Promise.all([
+        fetchProjectSessionDays(project.project, nextRange, query),
+        fetchProjectAnalytics(project.project, nextRange),
+      ]);
       if (generation === requestGeneration.current) {
-        setSessionDays((previous) => previous ? { ...data, days: [...previous.days, ...data.days] } : data);
+        loadedRange.current = { project: project.project, initialRange: range, range: nextRange };
+        setSessionDays(data);
+        setAnalytics(nextAnalytics);
+        setAnalyticsError(null);
       }
     } catch (error) {
       if (generation === requestGeneration.current) setMoreError(error instanceof Error ? error.message : String(error));
@@ -119,6 +132,7 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
     }
   }
 
+  const sessionRange = sessionDays ? `custom:${sessionDays.startDate}_${sessionDays.endDate}` : range;
   const trendData = useMemo(() => analytics?.daily.map((day) => ({ ...day, shortDate: formatTrendDateLabel(day.date), nonCachedInputTokens: Math.max(day.inputTokens - day.cachedInputTokens, 0) })) ?? [], [analytics]);
   const summary = analytics?.summary;
   const summaryParts = summary ? projectTokenBreakdown(summary) : null;
@@ -203,10 +217,10 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
           : sessionsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{sessionsError}</div>
             : !sessionDays?.days.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><Terminal className="mx-auto h-6 w-6 text-muted-foreground" /><p className="mt-2 text-sm font-medium">{searchQuery ? t("project_modal.no_matching_sessions") : t("project_modal.no_sessions")}</p></div>
               : <div key={JSON.stringify([project.project, range, query])} className="space-y-3">
-                {sessionDays.days.map((day, index) => <ProjectSessionDayView key={day.date} day={day} project={project.project} range={range} query={query} initiallyExpanded={index === 0} onSessionClick={onSessionClick} />)}
-                {moreError ? <p role="alert" className="text-sm text-error">{moreError}</p> : null}
-                {sessionDays.nextBefore ? <div className="flex justify-center py-3"><Button variant="secondary" onClick={() => void loadMoreDays()} disabled={loadingMore}>{loadingMore ? t("common.loading") : t("project_modal.load_more_days")}</Button></div> : null}
+                {sessionDays.days.map((day, index) => <ProjectSessionDayView key={day.date} day={day} project={project.project} range={sessionRange} query={query} initiallyExpanded={index === 0} onSessionClick={onSessionClick} />)}
               </div>}
+        {moreError ? <p role="alert" className="text-sm text-error">{moreError}</p> : null}
+        {sessionDays ? <div className="flex justify-center py-3"><Button variant="secondary" onClick={() => void loadMoreDays()} disabled={loadingMore || analyticsLoading}>{loadingMore ? t("common.loading") : t("project_modal.load_more_days")}</Button></div> : null}
       </section>
     </div>
   </div>;
