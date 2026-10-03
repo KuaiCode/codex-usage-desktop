@@ -7,6 +7,7 @@ mod db;
 mod exporter;
 mod overview;
 mod pricing;
+mod project_sessions;
 mod scanner;
 mod session_index;
 mod session_replay;
@@ -319,6 +320,42 @@ async fn fetch_codex_reset_history(days: u32) -> Result<Vec<CodexResetAnnounceme
 }
 
 #[tauri::command]
+async fn fetch_project_session_days(
+    state: tauri::State<'_, AppState>,
+    project: String,
+    range: String,
+    query: String,
+    before: Option<String>,
+) -> Result<types::ProjectSessionDaysResponse, String> {
+    let database_path = state.database_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = db::open_database(&database_path)?;
+        let timezone = project_sessions::prepare_index(&db)?;
+        project_sessions::query_days(&db, &project, &range, &query, before.as_deref(), &timezone)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn fetch_project_day_sessions(
+    state: tauri::State<'_, AppState>,
+    project: String,
+    range: String,
+    date: String,
+    query: String,
+) -> Result<Vec<SessionDetailRow>, String> {
+    let database_path = state.database_path.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let db = db::open_database(&database_path)?;
+        let timezone = project_sessions::prepare_index(&db)?;
+        project_sessions::query_day_sessions(&db, &project, &range, &date, &query, &timezone)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 async fn fetch_session_details(
     state: tauri::State<'_, AppState>,
 ) -> Result<Vec<SessionDetailRow>, String> {
@@ -556,8 +593,12 @@ async fn check_for_updates(
                 latest_version: version.clone(),
                 latest_tag: format!("app-v{}", version),
                 release_name: Some(format!("Codex Usage Desktop v{}", version)),
-                release_notes: Some("A new update is available. Please view the release page for details.".to_string()),
-                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest".to_string(),
+                release_notes: Some(
+                    "A new update is available. Please view the release page for details."
+                        .to_string(),
+                ),
+                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest"
+                    .to_string(),
                 etag,
                 not_modified: Some(true),
             });
@@ -572,13 +613,16 @@ async fn check_for_updates(
                 latest_tag: format!("app-v{}", version),
                 release_name: Some(format!("Codex Usage Desktop v{}", version)),
                 release_notes: None,
-                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest".to_string(),
+                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest"
+                    .to_string(),
                 etag: None,
                 not_modified: Some(false),
             });
         }
 
-        let response_etag = response.headers().get("etag")
+        let response_etag = response
+            .headers()
+            .get("etag")
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
 
@@ -613,7 +657,8 @@ async fn check_for_updates(
                 latest_tag: format!("app-v{}", version),
                 release_name: Some(format!("Codex Usage Desktop v{}", version)),
                 release_notes: None,
-                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest".to_string(),
+                release_url: "https://github.com/itvincent-git/codex-usage-desktop/releases/latest"
+                    .to_string(),
                 etag: None,
                 not_modified: Some(false),
             });
@@ -1077,6 +1122,8 @@ pub fn run() {
             open_url,
             reveal_in_file_manager,
             fetch_session_details,
+            fetch_project_session_days,
+            fetch_project_day_sessions,
             fetch_session_detail,
             update_tray
         ])

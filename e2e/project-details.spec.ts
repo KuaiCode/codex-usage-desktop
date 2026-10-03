@@ -30,7 +30,7 @@ describe("project details", () => {
           x: rect.x, y: rect.y, width: rect.width, height: rect.height,
           windowWidth: window.innerWidth, windowHeight: window.innerHeight,
           chartWidth: chart.width, scrollWidth: scroll.clientWidth,
-          allHistory: modal.textContent!.includes("All historical sessions"),
+          selectedRange: modal.textContent!.includes("Sessions within the selected date range"),
           modelShare: modal.textContent!.includes("Model token share"),
           backgroundInert: document.querySelector("main")!.closest("[inert]") !== null,
           scrollable: scroll.scrollHeight > scroll.clientHeight,
@@ -44,18 +44,22 @@ describe("project details", () => {
       expect(layout.width).toBe(layout.windowWidth);
       expect(layout.height).toBe(layout.windowHeight);
       expect(layout.chartWidth).toBeGreaterThan(layout.scrollWidth * 0.9);
-      expect(layout.allHistory).toBe(true);
+      expect(layout.selectedRange).toBe(true);
       expect(layout.modelShare).toBe(false);
       expect(layout.backgroundInert).toBe(true);
       expect(layout.scrollable).toBe(true);
-      expect(layout.secondGroupExpanded).toBe("true");
+      expect(layout.secondGroupExpanded).toBe("false");
 
       const query = layout.projectPath[0];
       expect(query).toBeTruthy();
       const search = $('[aria-label="Search project sessions"]');
       await search.setValue(query);
+      await browser.waitUntil(async () => browser.execute(() => document.querySelector('[aria-labelledby="modal-project-title"]')!.textContent!.includes("matching sessions")));
       const collapse = $(`#${layout.secondGroupId} > button`);
+      await expect(collapse).toHaveAttribute("aria-expanded", "false");
       await collapse.execute((element) => element.scrollIntoView({ behavior: "instant", block: "center", inline: "center" }));
+      await collapse.click();
+      await $(`#${layout.secondGroupId} [data-testid="session-card"]`).waitForExist({ timeout: 90_000 });
       await collapse.click();
       const card = $('[aria-labelledby="modal-project-title"] [data-testid="session-card"]');
       await card.execute((element) => element.scrollIntoView({ behavior: "instant", block: "center", inline: "center" }));

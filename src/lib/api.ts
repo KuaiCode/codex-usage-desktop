@@ -365,6 +365,31 @@ export async function fetchSessionDetails(): Promise<SessionDetailRow[]> {
   return invoke<SessionDetailRow[]>("fetch_session_details");
 }
 
+export type ProjectSessionDay = {
+  date: string;
+  sessionCount: number;
+  totalTokens: number;
+  costUSD: number;
+};
+
+export type ProjectSessionDaysResponse = {
+  startDate: string;
+  endDate: string;
+  timezone: string;
+  totalSessions: number;
+  matchingSessions: number;
+  days: ProjectSessionDay[];
+  nextBefore: string | null;
+};
+
+export async function fetchProjectSessionDays(project: string, range: RangeKey, query: string, before: string | null = null): Promise<ProjectSessionDaysResponse> {
+  return invoke<ProjectSessionDaysResponse>("fetch_project_session_days", { project, range, query, before });
+}
+
+export async function fetchProjectDaySessions(project: string, range: RangeKey, date: string, query: string): Promise<SessionDetailRow[]> {
+  return invoke<SessionDetailRow[]>("fetch_project_day_sessions", { project, range, date, query });
+}
+
 export type SessionReplayDetail = {
   path: string;
   sessionId: string;

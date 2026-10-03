@@ -47,6 +47,19 @@ function session(overrides: Partial<SessionDetailRow>): SessionDetailRow {
   };
 }
 
+function projectSessionsResult(command: string, args: { project: string; query: string; date?: string; before?: string | null }, rows: SessionDetailRow[], startDate = "2026-07-10", endDate = "2026-07-16") {
+  const scoped = rows.filter((row) => row.projects.includes(args.project) && row.dailyUsage.some((day) => day.date >= startDate && day.date <= endDate && day.projects.includes(args.project)));
+  const matches = scoped.filter((row) => [row.threadName, row.sessionId, ...row.models, ...row.projects, ...(row.projectReferences ?? []).map((reference) => reference.codexProjectName)].some((value) => value?.toLowerCase().includes(args.query.toLowerCase())));
+  if (command === "fetch_project_day_sessions") return matches.filter((row) => row.dailyUsage.some((day) => day.date === args.date)).map((row) => ({ ...row, dailyUsage: row.dailyUsage.filter((day) => day.date === args.date) }));
+  const dates = [...new Set(matches.flatMap((row) => row.dailyUsage.filter((day) => day.date >= startDate && day.date <= endDate && day.projects.includes(args.project)).map((day) => day.date)))].sort().reverse();
+  const remaining = dates.filter((date) => !args.before || date < args.before);
+  const days = remaining.slice(0, 7).map((date) => {
+    const usage = matches.flatMap((row) => row.dailyUsage.filter((day) => day.date === date));
+    return { date, sessionCount: usage.length, totalTokens: usage.reduce((sum, day) => sum + day.totalTokens, 0), costUSD: usage.reduce((sum, day) => sum + day.costUSD, 0) };
+  });
+  return { startDate, endDate, timezone: "UTC", totalSessions: scoped.length, matchingSessions: matches.length, days, nextBefore: remaining.length > 7 ? days.at(-1)!.date : null };
+}
+
 function replayDetail(overrides: Partial<SessionReplayDetail>): SessionReplayDetail {
   return {
     path: "/tmp/root.jsonl",
@@ -86,6 +99,20 @@ function replayAgent(overrides: Partial<SessionReplayDetail["agents"][number]>):
 }
 
 describe("session daily usage", () => {
+  it("keeps backend quota baselines without reprocessing project-day snapshots", () => {
+    const parse = vi.spyOn(Date, "parse");
+    onTestFinished(() => parse.mockRestore());
+    const row = session({});
+    row.dailyUsage[0].quotaUsage = { fiveHour: [], weekly: [{
+      windowMinutes: 10_080, resetsAt: "2026-07-20T00:00:00Z",
+      observedStartAt: "2026-07-14T23:00:00Z", observedEndAt: "2026-07-15T08:00:00Z",
+      observedStartPercent: 31, observedEndPercent: 37, observedDeltaPercent: 6, belowResolution: false,
+    }] };
+    render(<SessionUsageTable sessions={[row]} selectedProject="/repo/app" embedded projectDay />);
+    expect(screen.getByTestId("day-quota-summary")).toHaveTextContent("Weekly Used Approx. 6% • 69% → 63%");
+    expect(parse).not.toHaveBeenCalled();
+  });
+
   it("hides duplicate embedded controls while keeping project filtering and date expansion", () => {
     const recent = session({ path: "/tmp/recent.jsonl", threadName: "Recent" });
     const historical = session({ path: "/tmp/history.jsonl", threadName: "Historical", dailyUsage: [{ ...recent.dailyUsage[0], date: "2026-01-01" }] });
@@ -837,11 +864,11 @@ describe("session titles", () => {
   });
 
   it("filters project sessions by summary name", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === "fetch_session_details") return [
+    invokeMock.mockImplementation(async (command: string, args: any) => {
+      if (command === "fetch_project_session_days" || command === "fetch_project_day_sessions") return projectSessionsResult(command, args, [
         session({ path: "/tmp/alpha.jsonl", sessionId: "alpha-id.jsonl", threadName: "Alpha launch notes" }),
         session({ path: "/tmp/beta.jsonl", sessionId: "beta-id.jsonl", threadName: "Beta cleanup" }),
-      ];
+      ]);
       if (command === "fetch_project_analytics") return {
         project: "/repo/app", displayName: "app", range: "30d", startDate: "2026-07-01", endDate: "2026-07-30", timezone: "UTC",
         summary: { project: "/repo/app", displayName: "app", inputTokens: 200, cachedInputTokens: 40, outputTokens: 80, totalTokens: 280, costUSD: 0.002 },
@@ -872,14 +899,18 @@ describe("session titles", () => {
     expect(screen.getByText("Daily token and cost trend")).toBeInTheDocument();
     await userEvent.type(screen.getByPlaceholderText("Search title, session ID, model, or project..."), "alpha launch");
 
+    await waitFor(() => {
+      expect(screen.queryByText("Beta cleanup")).not.toBeInTheDocument();
+      expect(screen.getByText("Alpha launch notes")).toBeInTheDocument();
+    });
     expect(screen.getByText("Alpha launch notes")).toBeInTheDocument();
     expect(screen.getByText(/alpha-id/)).toBeInTheDocument();
     expect(screen.queryByText("Beta cleanup")).not.toBeInTheDocument();
   });
 
   it("shows and searches Codex project labels while retaining cwd filtering", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === "fetch_session_details") return [session({
+    invokeMock.mockImplementation(async (command: string, args: any) => {
+      if (command === "fetch_project_session_days" || command === "fetch_project_day_sessions") return projectSessionsResult(command, args, [session({
         path: "/tmp/codex.jsonl",
         sessionId: "codex-id.jsonl",
         threadName: "Usage work",
@@ -892,7 +923,7 @@ describe("session titles", () => {
           codexProjectName: "Codex Usage Desktop",
           codexProjectRoot: "/repo/codex-usage-desktop",
         }],
-      })];
+      })]);
       if (command === "fetch_project_analytics") return {
         project: "/repo/codex-usage-desktop", displayName: "codex-usage-desktop",
         codexProjectName: "Codex Usage Desktop", range: "30d", startDate: "2026-07-01", endDate: "2026-07-30", timezone: "UTC",
@@ -906,14 +937,14 @@ describe("session titles", () => {
 
     expect(await screen.findByRole("dialog", { name: "Codex Usage Desktop" })).toBeInTheDocument();
     await userEvent.type(screen.getByPlaceholderText("Search title, session ID, model, or project..."), "Codex Usage");
-    expect(screen.getByText("Usage work")).toBeInTheDocument();
+    expect(await screen.findByText("Usage work")).toBeInTheDocument();
     expect(invokeMock).toHaveBeenCalledWith("fetch_project_analytics", { project: "/repo/codex-usage-desktop", range: "30d" });
   });
 
   it("keeps sessions usable when project analytics fails", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, args: any) => {
       if (command === "fetch_project_analytics") throw new Error("analytics offline");
-      if (command === "fetch_session_details") return [session({ threadName: "Available session" })];
+      if (command === "fetch_project_session_days" || command === "fetch_project_day_sessions") return projectSessionsResult(command, args, [session({ threadName: "Available session" })]);
       throw new Error(`Unexpected invoke: ${command}`);
     });
 
@@ -924,15 +955,15 @@ describe("session titles", () => {
     expect(screen.getByPlaceholderText("Search title, session ID, model, or project...")).toBeEnabled();
   });
 
-  it("keeps historical project sessions isolated and counts each in-range session once", async () => {
+  it("restricts days to the selected range and counts resumed sessions once", async () => {
     const recent = session({ path: "/tmp/recent.jsonl", threadName: "Recent work" });
     const earlierDay = { ...recent.dailyUsage[0], date: "2026-07-14" };
-    invokeMock.mockImplementation(async (command: string) => {
-      if (command === "fetch_session_details") return [
+    invokeMock.mockImplementation(async (command: string, args: any) => {
+      if (command === "fetch_project_session_days" || command === "fetch_project_day_sessions") return projectSessionsResult(command, args, [
         { ...recent, dailyUsage: [...recent.dailyUsage, earlierDay] },
         session({ path: "/tmp/history.jsonl", threadName: "Historical work", dailyUsage: [{ ...earlierDay, date: "2026-01-01" }] }),
         session({ path: "/tmp/other.jsonl", threadName: "Other project", projects: ["/repo/other"], dailyUsage: [{ ...earlierDay, projects: ["/repo/other"] }] }),
-      ];
+      ]);
       if (command === "fetch_project_analytics") return {
         project: "/repo/app", displayName: "app", range: "7d", startDate: "2026-07-10", endDate: "2026-07-16", timezone: "UTC",
         summary: { project: "/repo/app", displayName: "app", inputTokens: 100, cachedInputTokens: 20, outputTokens: 40, totalTokens: 140, costUSD: 0.001 },
@@ -943,30 +974,32 @@ describe("session titles", () => {
     const onSessionClick = vi.fn();
     render(<ProjectSessionsModal project={{ project: "/repo/app", displayName: "app", totalTokens: 140, costUSD: 0.001 }} range="7d" onClose={vi.fn()} onGoToSessions={vi.fn()} onSessionClick={onSessionClick} />);
 
-    expect(await screen.findByText("Historical work")).toBeInTheDocument();
-    expect(screen.getAllByText("Recent work", { selector: "h3" })).toHaveLength(2);
+    expect(await screen.findByText("Recent work")).toBeInTheDocument();
+    expect(screen.getAllByText("Recent work", { selector: "h3" })).toHaveLength(1);
+    expect(screen.queryByText("Historical work")).not.toBeInTheDocument();
     expect(screen.queryByText("Other project")).not.toBeInTheDocument();
     expect(screen.getByText("Sessions", { selector: "header span" }).parentElement).toHaveTextContent("Sessions1");
-    expect(screen.getByText(/All historical sessions/)).toBeInTheDocument();
+    expect(screen.getByText(/Sessions within the selected date range/)).toBeInTheDocument();
     expect(screen.getByText("Statistics: 2026-07-10 – 2026-07-16 · UTC")).toBeInTheDocument();
-    const historicalGroup = screen.getByText("Historical work").closest<HTMLElement>('[id^="date-group-"]')!;
-    const dateToggle = within(historicalGroup).getAllByRole("button")[0];
-    expect(dateToggle).toHaveAttribute("aria-expanded", "true");
+    const olderGroup = document.getElementById("date-group-2026-07-14")!;
+    const dateToggle = within(olderGroup).getAllByRole("button")[0];
+    expect(dateToggle).toHaveAttribute("aria-expanded", "false");
+    expect(invokeMock).not.toHaveBeenCalledWith("fetch_project_day_sessions", expect.objectContaining({ date: "2026-07-14" }));
     await userEvent.click(dateToggle);
-    expect(screen.queryByText("Historical work")).not.toBeInTheDocument();
-    await userEvent.click(dateToggle);
-    await userEvent.click(screen.getByText("Historical work"));
-    expect(onSessionClick.mock.calls[0][0]).toMatchObject({ path: "/tmp/history.jsonl", totalTokens: 140 });
+    await waitFor(() => expect(screen.getAllByText("Recent work", { selector: "h3" })).toHaveLength(2));
+    await userEvent.click(within(olderGroup).getByText("Recent work"));
+    expect(onSessionClick.mock.calls[0][0]).toMatchObject({ path: "/tmp/recent.jsonl", totalTokens: 140 });
+    expect(invokeMock).not.toHaveBeenCalledWith("fetch_session_details");
   });
 
   it("reuses subagent expansion and searches session IDs, models and project paths", async () => {
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, args: any) => {
       if (command === "fetch_project_analytics") throw new Error("analytics offline");
-      if (command === "fetch_session_details") return [
+      if (command === "fetch_project_session_days" || command === "fetch_project_day_sessions") return projectSessionsResult(command, args, [
         session({ path: "/tmp/root.jsonl", sessionId: "root-id.jsonl", threadName: "Root task", agentSessionId: "root" }),
         session({ path: "/tmp/child.jsonl", threadName: "Child task", agentSessionId: "child", parentSessionId: "root", agentDepth: 1 }),
         session({ path: "/tmp/second.jsonl", threadName: "Second child", agentSessionId: "second", parentSessionId: "root", agentDepth: 1 }),
-      ];
+      ]);
       throw new Error(`Unexpected invoke: ${command}`);
     });
     render(<ProjectSessionsModal project={{ project: "/repo/app", displayName: "app", totalTokens: 420, costUSD: 0.003 }} range="7d" onClose={vi.fn()} onGoToSessions={vi.fn()} />);
@@ -978,20 +1011,20 @@ describe("session titles", () => {
     for (const query of ["ROOT-ID", "gpt-5", "/repo/app"]) {
       await userEvent.clear(search);
       await userEvent.type(search, query);
-      expect(screen.getByText("Root task")).toBeInTheDocument();
+      expect(await screen.findByText("Root task")).toBeInTheDocument();
     }
     await userEvent.clear(search);
     await userEvent.type(search, "missing");
-    expect(screen.getByText("No sessions match your search query")).toBeInTheDocument();
+    expect(await screen.findByText("No sessions match your search query")).toBeInTheDocument();
   });
 
   it.each(["empty", "error", "loading"])("shows the %s session state independently of analytics", async (state) => {
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, args: any) => {
       if (command === "fetch_project_analytics") throw new Error("analytics offline");
-      if (command === "fetch_session_details") {
+      if (command === "fetch_project_session_days") {
         if (state === "error") throw new Error("sessions offline");
         if (state === "loading") return new Promise(() => {});
-        return [];
+        return projectSessionsResult(command, args, []);
       }
       throw new Error(`Unexpected invoke: ${command}`);
     });

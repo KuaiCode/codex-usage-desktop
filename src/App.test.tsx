@@ -1104,11 +1104,16 @@ describe("App", () => {
       modifiedAtMs: Date.parse("2026-06-11T00:00:00Z"), sizeBytes: 1024,
       ...day, dailyUsage: [day, { ...day, date: "2026-06-10" }],
     };
-    invokeMock.mockImplementation(async (command: string) => {
+    invokeMock.mockImplementation(async (command: string, args?: { date?: string }) => {
       if (command === "scan_usage") return scan(0);
       if (command === "fetch_overview") return { ...overview(), projects: [project] };
       if (command === "fetch_codex_limits") return limits(80);
       if (command === "check_for_updates") return { hasUpdate: false };
+      if (command === "fetch_project_session_days") return {
+        startDate: "2026-05-13", endDate: "2026-06-11", timezone: "UTC", totalSessions: 1, matchingSessions: 1,
+        days: ["2026-06-11", "2026-06-10"].map((date) => ({ date, sessionCount: 1, totalTokens: 140, costUSD: 0.001 })), nextBefore: null,
+      };
+      if (command === "fetch_project_day_sessions") return [{ ...row, dailyUsage: row.dailyUsage.filter((day) => day.date === args?.date) }];
       if (command === "fetch_session_details") return [row];
       if (command === "fetch_project_analytics") return {
         project: project.project, displayName: "app", range: "30d", startDate: "2026-05-13", endDate: "2026-06-11", timezone: "UTC",
@@ -1132,10 +1137,14 @@ describe("App", () => {
     const search = within(projectDialog).getByRole("textbox", { name: "Search project sessions" });
     expect(search).toHaveFocus();
     await user.type(search, "Project task");
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("fetch_project_session_days", expect.objectContaining({ query: "Project task" })));
     const olderGroup = projectDialog.querySelector('#date-group-2026-06-10')!;
     const collapse = within(olderGroup as HTMLElement).getAllByRole("button")[0];
+    expect(collapse).toHaveAttribute("aria-expanded", "false");
     await user.click(collapse);
-    const card = within(projectDialog).getByText("Project task", { selector: "h3" }).closest("article")!;
+    await waitFor(() => expect(within(olderGroup as HTMLElement).getByText("Project task", { selector: "h3" })).toBeInTheDocument());
+    await user.click(collapse);
+    const card = within(projectDialog.querySelector<HTMLElement>("#date-group-2026-06-11")!).getByText("Project task", { selector: "h3" }).closest("article")!;
     collapse.focus();
     await user.tab();
     const sessionsButton = within(projectDialog).getByRole("button", { name: "View in Sessions Tab" });
@@ -1161,6 +1170,7 @@ describe("App", () => {
     expect(search).toHaveValue("Project task");
     expect(collapse).toHaveAttribute("aria-expanded", "false");
     expect(scroll.scrollTop).toBe(250);
+    expect(invokeMock.mock.calls.filter(([command, args]) => command === "fetch_project_session_days" && args.query === "")).toHaveLength(1);
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();

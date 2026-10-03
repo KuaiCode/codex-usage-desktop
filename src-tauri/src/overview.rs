@@ -32,7 +32,7 @@ fn range_days(range: &str) -> Option<i64> {
     }
 }
 
-fn resolve_range(range: &str, timezone: &str) -> Result<(String, String, i64), String> {
+pub(crate) fn resolve_range(range: &str, timezone: &str) -> Result<(String, String, i64), String> {
     if range.starts_with("custom:") {
         let parts: Vec<&str> = range["custom:".len()..].split('_').collect();
         if parts.len() != 2 {

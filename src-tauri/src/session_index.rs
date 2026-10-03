@@ -26,7 +26,7 @@ pub fn load_thread_names() -> HashMap<String, String> {
     }
 }
 
-fn read_thread_names(codex_home: &Path) -> io::Result<HashMap<String, String>> {
+pub(crate) fn read_thread_names(codex_home: &Path) -> io::Result<HashMap<String, String>> {
     let path = codex_home.join(SESSION_INDEX_FILE);
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,

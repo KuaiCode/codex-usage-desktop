@@ -223,7 +223,7 @@ pub fn load_session_agents(db: &Connection) -> Result<Vec<SessionReplayAgent>, S
         .collect())
 }
 
-fn read_session_agent(record: SessionHierarchyRecord) -> Option<SessionReplayAgent> {
+pub(crate) fn read_session_agent(record: SessionHierarchyRecord) -> Option<SessionReplayAgent> {
     let file = File::open(&record.path).ok()?;
     for line in BufReader::new(file).lines().map_while(Result::ok) {
         let Ok(entry) = serde_json::from_str::<Value>(&line) else {

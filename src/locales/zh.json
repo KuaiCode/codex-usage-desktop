@@ -411,7 +411,7 @@
     "project_details": "项目详情",
     "active_files": "个活动文件",
     "showing_filtered": "当前显示 {{filtered}} 个匹配会话",
-    "subtitle_desc": "该项目的全部历史会话，包含所选统计范围之外的会话。",
+    "subtitle_desc": "仅展示所选日期范围内的会话，展开某天以加载会话明细。",
     "search_placeholder": "搜索概要名、会话 ID、模型或项目...",
     "no_matching_sessions": "没有找到符合搜索条件的会话",
     "clear_search_hint": "尝试清空搜索框或搜索其他关键词。",
@@ -430,7 +430,10 @@
     "no_trend_data": "此时间范围内没有每日活动。",
     "analytics_range": "统计日期：{{start}} – {{end}} · {{timezone}}",
     "close_aria": "关闭项目详情",
-    "search_aria": "搜索项目会话"
+    "search_aria": "搜索项目会话",
+    "load_more_days": "加载更多天数",
+    "load_more_sessions": "加载更多会话",
+    "retry": "重试"
   },
   "ranges": {
     "1d": "最近 1 天",

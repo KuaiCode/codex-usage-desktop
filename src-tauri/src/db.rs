@@ -74,6 +74,7 @@ pub fn open_database(database_path: &Path) -> Result<Connection, String> {
         "quota_parser_version",
         "ALTER TABLE session_file_rollups ADD COLUMN quota_parser_version INTEGER NOT NULL DEFAULT 0",
     )?;
+    crate::project_sessions::create_tables(&db)?;
     Ok(db)
 }
 
@@ -286,6 +287,9 @@ pub fn reset_usage_state(db: &Connection) -> Result<(), String> {
         DELETE FROM daily_usage_rollups;
         DELETE FROM session_file_rollups;
         DELETE FROM scan_runs;
+        DELETE FROM project_session_days;
+        DELETE FROM project_session_index;
+        DELETE FROM project_session_quota;
         "#,
     )
     .map_err(|error| error.to_string())
@@ -702,94 +706,103 @@ pub fn query_session_details(db: &Connection) -> Result<Vec<SessionDetailRow>, S
         .map_err(|error| error.to_string())?;
 
     let rows = statement
-        .query_map([], |row| {
-            let path: String = row.get(0)?;
-            let modified_at_ms: i64 = row.get(1)?;
-            let size_bytes: i64 = row.get(2)?;
-            let rows_json: String = row.get(3)?;
-            let prompt_title: Option<String> = row.get(4)?;
-            let quota_usage = row
-                .get::<_, Option<String>>(5)?
-                .and_then(|json| serde_json::from_str::<SessionQuotaRollup>(&json).ok());
-
-            let daily_rows =
-                serde_json::from_str::<Vec<DailyUsageRow>>(&rows_json).unwrap_or_default();
-
-            let mut input_tokens = 0;
-            let mut cached_input_tokens = 0;
-            let mut output_tokens = 0;
-            let mut reasoning_output_tokens = 0;
-            let mut total_tokens = 0;
-            let mut cost_usd = 0.0;
-            let mut models = std::collections::BTreeSet::new();
-            let mut projects = std::collections::BTreeSet::new();
-            let mut daily_usage = Vec::with_capacity(daily_rows.len());
-
-            for r in daily_rows {
-                let quota_usage_for_date = quota_usage
-                    .as_ref()
-                    .and_then(|usage| usage.daily.get(&r.date).cloned());
-                input_tokens += r.input_tokens;
-                cached_input_tokens += r.cached_input_tokens;
-                output_tokens += r.output_tokens;
-                reasoning_output_tokens += r.reasoning_output_tokens;
-                total_tokens += r.total_tokens;
-                cost_usd += r.cost_usd;
-                for model in r.models.keys() {
-                    models.insert(model.clone());
-                }
-                for project in r.projects.keys() {
-                    projects.insert(project.clone());
-                }
-                daily_usage.push(SessionDailyUsageRow {
-                    date: r.date,
-                    input_tokens: r.input_tokens,
-                    cached_input_tokens: r.cached_input_tokens,
-                    output_tokens: r.output_tokens,
-                    reasoning_output_tokens: r.reasoning_output_tokens,
-                    total_tokens: r.total_tokens,
-                    cost_usd: r.cost_usd,
-                    models: r.models.into_keys().collect(),
-                    projects: r.projects.into_keys().collect(),
-                    quota_usage: quota_usage_for_date,
-                });
-            }
-
-            let session_id = Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or(&path)
-                .to_string();
-
-            Ok(SessionDetailRow {
-                path,
-                session_id,
-                thread_name: prompt_title.filter(|title| !title.is_empty()),
-                agent_session_id: None,
-                parent_session_id: None,
-                agent_depth: 0,
-                agent_path: None,
-                agent_nickname: None,
-                agent_role: None,
-                modified_at_ms,
-                size_bytes,
-                input_tokens,
-                cached_input_tokens,
-                output_tokens,
-                reasoning_output_tokens,
-                total_tokens,
-                cost_usd,
-                models: models.into_iter().collect(),
-                projects: projects.into_iter().collect(),
-                project_references: Vec::new(),
-                daily_usage,
-                quota_usage: quota_usage.map(|usage| usage.session),
-            })
-        })
+        .query_map([], session_detail_from_row)
         .map_err(|error| error.to_string())?;
 
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
+}
+
+pub fn query_session_detail(db: &Connection, path: &str) -> Result<SessionDetailRow, String> {
+    db.query_row(
+        "SELECT path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_usage_json FROM session_file_rollups WHERE path = ?",
+        [path],
+        session_detail_from_row,
+    ).map_err(|error| error.to_string())
+}
+
+fn session_detail_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionDetailRow> {
+    let path: String = row.get(0)?;
+    let modified_at_ms: i64 = row.get(1)?;
+    let size_bytes: i64 = row.get(2)?;
+    let rows_json: String = row.get(3)?;
+    let prompt_title: Option<String> = row.get(4)?;
+    let quota_usage = row
+        .get::<_, Option<String>>(5)?
+        .and_then(|json| serde_json::from_str::<SessionQuotaRollup>(&json).ok());
+
+    let daily_rows = serde_json::from_str::<Vec<DailyUsageRow>>(&rows_json).unwrap_or_default();
+
+    let mut input_tokens = 0;
+    let mut cached_input_tokens = 0;
+    let mut output_tokens = 0;
+    let mut reasoning_output_tokens = 0;
+    let mut total_tokens = 0;
+    let mut cost_usd = 0.0;
+    let mut models = std::collections::BTreeSet::new();
+    let mut projects = std::collections::BTreeSet::new();
+    let mut daily_usage = Vec::with_capacity(daily_rows.len());
+
+    for r in daily_rows {
+        let quota_usage_for_date = quota_usage
+            .as_ref()
+            .and_then(|usage| usage.daily.get(&r.date).cloned());
+        input_tokens += r.input_tokens;
+        cached_input_tokens += r.cached_input_tokens;
+        output_tokens += r.output_tokens;
+        reasoning_output_tokens += r.reasoning_output_tokens;
+        total_tokens += r.total_tokens;
+        cost_usd += r.cost_usd;
+        for model in r.models.keys() {
+            models.insert(model.clone());
+        }
+        for project in r.projects.keys() {
+            projects.insert(project.clone());
+        }
+        daily_usage.push(SessionDailyUsageRow {
+            date: r.date,
+            input_tokens: r.input_tokens,
+            cached_input_tokens: r.cached_input_tokens,
+            output_tokens: r.output_tokens,
+            reasoning_output_tokens: r.reasoning_output_tokens,
+            total_tokens: r.total_tokens,
+            cost_usd: r.cost_usd,
+            models: r.models.into_keys().collect(),
+            projects: r.projects.into_keys().collect(),
+            quota_usage: quota_usage_for_date,
+        });
+    }
+
+    let session_id = Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&path)
+        .to_string();
+
+    Ok(SessionDetailRow {
+        path,
+        session_id,
+        thread_name: prompt_title.filter(|title| !title.is_empty()),
+        agent_session_id: None,
+        parent_session_id: None,
+        agent_depth: 0,
+        agent_path: None,
+        agent_nickname: None,
+        agent_role: None,
+        modified_at_ms,
+        size_bytes,
+        input_tokens,
+        cached_input_tokens,
+        output_tokens,
+        reasoning_output_tokens,
+        total_tokens,
+        cost_usd,
+        models: models.into_iter().collect(),
+        projects: projects.into_iter().collect(),
+        project_references: Vec::new(),
+        daily_usage,
+        quota_usage: quota_usage.map(|usage| usage.session),
+    })
 }
 
 #[cfg(test)]

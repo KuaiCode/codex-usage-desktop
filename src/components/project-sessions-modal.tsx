@@ -3,7 +3,8 @@ import { ArrowRight, Coins, Database, Folder, Search, Terminal, X } from "lucide
 import { Area, Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   fetchProjectAnalytics,
-  fetchSessionDetails,
+  fetchProjectSessionDays,
+  type ProjectSessionDaysResponse,
   type OverviewResponse,
   type ProjectAnalyticsResponse,
   type RangeKey,
@@ -14,10 +15,10 @@ import { formatTrendDateLabel, getYAxisWidth } from "@/lib/usage-dashboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useTranslation } from "react-i18next";
-import { projectLabel, sessionProjectReferences } from "@/lib/project-reference";
+import { projectLabel } from "@/lib/project-reference";
 import { projectTokenBreakdown } from "@/lib/project-analytics";
 import { MetricBadge } from "./metric-badge";
-import { SessionUsageTable } from "./session-usage-table";
+import { ProjectSessionDayView } from "./project-session-day";
 import { useModalFocus } from "@/hooks/use-modal-focus";
 
 type ProjectSessionsModalProps = {
@@ -28,10 +29,6 @@ type ProjectSessionsModalProps = {
   isActive?: boolean;
   onGoToSessions: (projectPath: string) => void;
 };
-
-function cleanSessionId(sessionId: string) {
-  return sessionId.replace(/\.jsonl$/, "");
-}
 
 function TrendTooltip({ active, payload, label, t }: any) {
   if (!active || !payload?.length) return null;
@@ -50,7 +47,12 @@ function TrendTooltip({ active, payload, label, t }: any) {
 
 export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, onSessionClick, isActive = true }: ProjectSessionsModalProps) {
   const { t } = useTranslation();
-  const [sessions, setSessions] = useState<SessionDetailRow[]>([]);
+  const [sessionDays, setSessionDays] = useState<ProjectSessionDaysResponse | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const daysRequest = useRef<{ key: string; promise: Promise<ProjectSessionDaysResponse> } | null>(null);
+  const requestGeneration = useRef(0);
   const [sessionsLoading, setSessionsLoading] = useState(true);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<ProjectAnalyticsResponse | null>(null);
@@ -76,26 +78,46 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
   }, [project.project, range]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setQuery(searchQuery.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
     let active = true;
+    requestGeneration.current += 1;
+    setSessionDays(null);
     setSessionsLoading(true);
     setSessionsError(null);
-    void fetchSessionDetails().then((data) => {
-      if (active) setSessions(data.filter((session) => session.projects?.includes(project.project)));
+    setLoadingMore(false);
+    setMoreError(null);
+    const key = JSON.stringify([project.project, range, query]);
+    if (daysRequest.current?.key !== key) {
+      daysRequest.current = { key, promise: fetchProjectSessionDays(project.project, range, query) };
+    }
+    void daysRequest.current.promise.then((data) => {
+      if (active) setSessionDays(data);
     }).catch((error) => {
-      if (active) setSessionsError(error instanceof Error ? error.message : t("project_modal.no_sessions"));
+      if (active) setSessionsError(error instanceof Error ? error.message : String(error));
     }).finally(() => { if (active) setSessionsLoading(false); });
-    return () => { active = false; };
-  }, [project.project, t]);
+    return () => { active = false; requestGeneration.current += 1; };
+  }, [project.project, range, query]);
 
-  const filteredSessions = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return sessions;
-    return sessions.filter((session) => session.threadName?.toLowerCase().includes(query)
-      || cleanSessionId(session.sessionId).toLowerCase().includes(query)
-      || session.models?.some((model) => model.toLowerCase().includes(query))
-      || sessionProjectReferences(session).some((reference) => [reference.codexProjectName, reference.displayName, reference.path]
-        .some((value) => value?.toLowerCase().includes(query))));
-  }, [searchQuery, sessions]);
+  async function loadMoreDays() {
+    if (!sessionDays?.nextBefore || loadingMore) return;
+    const generation = requestGeneration.current;
+    setLoadingMore(true);
+    setMoreError(null);
+    try {
+      const data = await fetchProjectSessionDays(project.project, range, query, sessionDays.nextBefore);
+      if (generation === requestGeneration.current) {
+        setSessionDays((previous) => previous ? { ...data, days: [...previous.days, ...data.days] } : data);
+      }
+    } catch (error) {
+      if (generation === requestGeneration.current) setMoreError(error instanceof Error ? error.message : String(error));
+    } finally {
+      if (generation === requestGeneration.current) setLoadingMore(false);
+    }
+  }
 
   const trendData = useMemo(() => analytics?.daily.map((day) => ({ ...day, shortDate: formatTrendDateLabel(day.date), nonCachedInputTokens: Math.max(day.inputTokens - day.cachedInputTokens, 0) })) ?? [], [analytics]);
   const summary = analytics?.summary;
@@ -105,13 +127,6 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
   const maxDailyCost = Math.max(...trendData.map((day) => day.costUSD), 0);
   const tokenAxisWidth = getYAxisWidth(maxDailyTokens, formatCompactNumber, 64);
   const costAxisWidth = getYAxisWidth(maxDailyCost, formatCurrencyShort, 72);
-
-  const rangeSessionCount = analytics ? new Set(sessions.filter((session) => {
-    const dates = session.totalTokens > 0 && session.dailyUsage.length > 0
-      ? session.dailyUsage.filter((day) => day.projects.includes(project.project)).map((day) => day.date)
-      : [new Intl.DateTimeFormat("en-CA", { timeZone: analytics.timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(session.modifiedAtMs)];
-    return dates.some((date) => date >= analytics.startDate && date <= analytics.endDate);
-  }).map((session) => session.path)).size : 0;
 
   return <div ref={dialogRef} className="fixed inset-0 z-50 flex flex-col overflow-hidden overscroll-contain bg-background text-foreground" role="dialog" aria-modal={isActive ? "true" : undefined} aria-labelledby="modal-project-title" aria-hidden={!isActive} inert={!isActive}>
     <header className="shrink-0 border-b border-border/70 bg-surface px-4 py-1.5 shadow-sm" data-testid="project-modal-header">
@@ -137,7 +152,7 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
           <MetricBadge label={t("project_modal.output")} value={formatNumber(summaryParts.output)} icon={<Database className="h-3.5 w-3.5" />} tone="green" />
           <MetricBadge label={t("project_modal.estimated_cost")} value={formatCurrency(summary.costUSD)} icon={<Coins className="h-3.5 w-3.5" />} tone="emerald" />
           <MetricBadge label={t("project_modal.cache_hit")} value={formatPercent(cacheHitRate)} icon={<Database className="h-3.5 w-3.5" />} tone="cyan" />
-          <MetricBadge label={t("common.sessions")} value={sessionsLoading || sessionsError ? "—" : formatNumber(rangeSessionCount)} icon={<Terminal className="h-3.5 w-3.5" />} tone="amber" />
+          <MetricBadge label={t("common.sessions")} value={sessionsLoading || sessionsError ? "—" : formatNumber(sessionDays?.totalSessions ?? 0)} icon={<Terminal className="h-3.5 w-3.5" />} tone="amber" />
         </div>
       </> : null}
     </header>
@@ -177,7 +192,7 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
           <div>
             <h3 id="project-sessions-title" className="text-sm font-bold">{t("project_modal.sessions_list")}</h3>
             <p className="text-xs text-muted-foreground">{t("project_modal.subtitle_desc")}</p>
-            {searchQuery ? <p className="text-xs text-muted-foreground">{t("project_modal.showing_filtered", { filtered: new Set(filteredSessions.map((session) => session.path)).size })}</p> : null}
+            {searchQuery ? <p className="text-xs text-muted-foreground">{t("project_modal.showing_filtered", { filtered: sessionDays?.matchingSessions ?? 0 })}</p> : null}
           </div>
           <div className="relative w-full sm:max-w-xs">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -186,8 +201,12 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
         </div>
         {sessionsLoading ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">{t("loading.loading_sessions")}</div>
           : sessionsError ? <div className="rounded-xl border border-error/20 bg-error/5 p-4 text-sm text-error">{sessionsError}</div>
-            : filteredSessions.length === 0 ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><Terminal className="mx-auto h-6 w-6 text-muted-foreground" /><p className="mt-2 text-sm font-medium">{searchQuery ? t("project_modal.no_matching_sessions") : t("project_modal.no_sessions")}</p></div>
-              : <SessionUsageTable sessions={filteredSessions} selectedProject={project.project} onSessionClick={onSessionClick} embedded />}
+            : !sessionDays?.days.length ? <div className="rounded-xl border border-dashed border-border p-8 text-center"><Terminal className="mx-auto h-6 w-6 text-muted-foreground" /><p className="mt-2 text-sm font-medium">{searchQuery ? t("project_modal.no_matching_sessions") : t("project_modal.no_sessions")}</p></div>
+              : <div key={JSON.stringify([project.project, range, query])} className="space-y-3">
+                {sessionDays.days.map((day, index) => <ProjectSessionDayView key={day.date} day={day} project={project.project} range={range} query={query} initiallyExpanded={index === 0} onSessionClick={onSessionClick} />)}
+                {moreError ? <p role="alert" className="text-sm text-error">{moreError}</p> : null}
+                {sessionDays.nextBefore ? <div className="flex justify-center py-3"><Button variant="secondary" onClick={() => void loadMoreDays()} disabled={loadingMore}>{loadingMore ? t("common.loading") : t("project_modal.load_more_days")}</Button></div> : null}
+              </div>}
       </section>
     </div>
   </div>;

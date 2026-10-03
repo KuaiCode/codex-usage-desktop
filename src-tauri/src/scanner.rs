@@ -69,6 +69,7 @@ pub fn scan_codex_usage(
     let total_started = Instant::now();
     let timezone = timezone.unwrap_or_else(resolve_app_timezone);
     let scanned_at = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let index_home = codex_home.clone().unwrap_or_else(default_codex_home);
     let scan = load_daily_rows(db, codex_home, &timezone, &scanned_at, pricing_source)?;
     let db_started = Instant::now();
 
@@ -81,6 +82,7 @@ pub fn scan_codex_usage(
     delete_missing_daily_rows(db, &active_dates)?;
     upsert_session_file_rollups(db, &scan.changed_rollups, &scanned_at)?;
     delete_missing_session_file_rollups(db, &scan.active_paths)?;
+    crate::project_sessions::sync_index(db, &index_home, &timezone)?;
     record_scan_run(db, &scanned_at, &timezone, scan.rows.len())?;
 
     let mut metrics = scan.metrics;

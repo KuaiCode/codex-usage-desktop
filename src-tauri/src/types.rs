@@ -434,6 +434,28 @@ pub struct SessionDetailRow {
     pub quota_usage: Option<SessionQuotaUsage>,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSessionDay {
+    pub date: String,
+    pub session_count: usize,
+    pub total_tokens: i64,
+    #[serde(rename = "costUSD")]
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectSessionDaysResponse {
+    pub start_date: String,
+    pub end_date: String,
+    pub timezone: String,
+    pub total_sessions: usize,
+    pub matching_sessions: usize,
+    pub days: Vec<ProjectSessionDay>,
+    pub next_before: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionReplaySummary {

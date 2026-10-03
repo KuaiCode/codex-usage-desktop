@@ -24,6 +24,8 @@ type SessionUsageTableProps = {
   onClearProjectFilter?: () => void;
   onSessionClick?: (session: SessionDetailRow) => void;
   embedded?: boolean;
+  projectDay?: boolean;
+  agentGroupPageSize?: number;
 };
 
 function formatBytes(bytes: number) {
@@ -322,10 +324,13 @@ export function SessionUsageTable({
   onClearProjectFilter,
   onSessionClick,
   embedded = false,
+  projectDay = false,
+  agentGroupPageSize,
 }: SessionUsageTableProps) {
   const { t, i18n } = useTranslation();
   // Track which date groups are collapsed
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
+  const [visibleGroupCounts, setVisibleGroupCounts] = useState<Record<string, number>>({});
   const [expandedAgentGroups, setExpandedAgentGroups] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -345,22 +350,27 @@ export function SessionUsageTable({
     }
   }, [initialExpandedDate]);
 
-  const displaySessions = useMemo<SessionDisplayRow[]>(() => rebaseQuotaUsage(sessions.flatMap((session) => {
-    if (session.totalTokens === 0 || session.dailyUsage.length === 0) {
-      return [{
-        ...session,
-        usageDate: dayjs(session.modifiedAtMs).format("YYYY-MM-DD"),
-        originalSession: session,
-      }];
-    }
+  const displaySessions = useMemo<SessionDisplayRow[]>(() => {
+    const rows = sessions.flatMap((session) => {
+      // Project day queries supply the application-timezone date even for zero-token sessions.
+      if ((!projectDay && session.totalTokens === 0) || session.dailyUsage.length === 0) {
+        return [{
+          ...session,
+          usageDate: dayjs(session.modifiedAtMs).format("YYYY-MM-DD"),
+          originalSession: session,
+        }];
+      }
 
-    return session.dailyUsage.map((usage) => ({
-      ...session,
-      ...usage,
-      usageDate: usage.date,
-      originalSession: session,
-    }));
-  })), [sessions]);
+      return session.dailyUsage.map((usage) => ({
+        ...session,
+        ...usage,
+        usageDate: usage.date,
+        originalSession: session,
+      }));
+    });
+    // The backend already resolves project-day quota baselines, including other dates.
+    return projectDay ? rows : rebaseQuotaUsage(rows);
+  }, [sessions, projectDay]);
 
   // Group and sort session-day rows using the scanner's application-timezone dates.
   const groups = useMemo(() => {
@@ -550,14 +560,32 @@ export function SessionUsageTable({
             : "--";
           const hasQuotaUsage = group.fiveHourQuota.hasUsage || group.weeklyQuota.hasUsage;
 
+          const quotaSummary = hasQuotaUsage ? (
+            <div
+              data-testid="day-quota-summary"
+              className="space-y-1 text-right text-xs tabular-nums"
+              aria-label={t("sessions.quota.day_usage_label", {
+                fiveHour: fiveHourQuota,
+                weekly: weeklyQuota,
+              })}
+              title={t("sessions.quota.day_caveat")}
+            >
+              <div className="text-muted-foreground">{t("sessions.quota.day_consumed")}</div>
+              <div className="flex items-center justify-end gap-3 font-semibold text-foreground">
+                <span><span className="text-muted-foreground">{t("sessions.quota.five_hour")}</span> {fiveHourQuota}</span>
+                <span><span className="text-muted-foreground">{t("sessions.quota.weekly")}</span> {weeklyQuota}</span>
+              </div>
+            </div>
+          ) : null;
+
           return (
             <div
               key={group.date}
-              id={`date-group-${group.date}`}
+              id={projectDay ? undefined : `date-group-${group.date}`}
               className="overflow-hidden rounded-xl border border-border/50 bg-card/20 backdrop-blur-sm shadow-sm transition-all duration-300 hover:border-border/80 scroll-mt-6"
             >
               {/* Collapsible Accordion Header */}
-              <button
+              {!projectDay ? <button
                 type="button"
                 onClick={() => toggleDate(group.date)}
                 className="flex w-full flex-col gap-3 px-5 py-4 text-left sm:flex-row sm:items-center sm:justify-between hover:bg-white/[0.02] dark:hover:bg-white/[0.01] transition-all duration-200"
@@ -599,23 +627,7 @@ export function SessionUsageTable({
 
                 {/* Right Section: Day summary totals */}
                 <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-                  {hasQuotaUsage ? (
-                    <div
-                      data-testid="day-quota-summary"
-                      className="space-y-1 text-right text-xs tabular-nums"
-                      aria-label={t("sessions.quota.day_usage_label", {
-                        fiveHour: fiveHourQuota,
-                        weekly: weeklyQuota,
-                      })}
-                      title={t("sessions.quota.day_caveat")}
-                    >
-                      <div className="text-muted-foreground">{t("sessions.quota.day_consumed")}</div>
-                      <div className="flex items-center justify-end gap-3 font-semibold text-foreground">
-                        <span><span className="text-muted-foreground">{t("sessions.quota.five_hour")}</span> {fiveHourQuota}</span>
-                        <span><span className="text-muted-foreground">{t("sessions.quota.weekly")}</span> {weeklyQuota}</span>
-                      </div>
-                    </div>
-                  ) : null}
+                  {quotaSummary}
 
                   {/* Day total tokens indicator */}
                   {group.totalTokens > 0 ? (
@@ -651,12 +663,13 @@ export function SessionUsageTable({
                     </div>
                   )}
                 </div>
-              </button>
+              </button> : null}
 
               {/* Accordion Content: compact session cards for this date */}
               {!collapsed && (
                 <div className="space-y-2 border-t border-border/40 bg-black/[0.04] px-3 py-3 dark:bg-black/[0.08] sm:px-4">
-                  {group.agentGroups.map((agentGroup) => {
+                  {projectDay ? quotaSummary : null}
+                  {group.agentGroups.slice(0, visibleGroupCounts[group.date] ?? agentGroupPageSize ?? group.agentGroups.length).map((agentGroup) => {
                     const groupKey = `${group.date}:${agentGroup.key}`;
                     const hasSubagents = agentGroup.sessions.length > 1;
                     const isExpanded = Boolean(expandedAgentGroups[groupKey]);
@@ -923,6 +936,11 @@ export function SessionUsageTable({
                       </div>
                     );
                   })}
+                  {agentGroupPageSize && (visibleGroupCounts[group.date] ?? agentGroupPageSize) < group.agentGroups.length ? (
+                    <Button variant="secondary" size="sm" onClick={() => setVisibleGroupCounts((previous) => ({
+                      ...previous, [group.date]: (previous[group.date] ?? agentGroupPageSize) + agentGroupPageSize,
+                    }))}>{t("project_modal.load_more_sessions")}</Button>
+                  ) : null}
                 </div>
               )}
             </div>

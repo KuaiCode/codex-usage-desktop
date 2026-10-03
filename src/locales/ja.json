@@ -454,7 +454,7 @@
     "project_details": "プロジェクトの詳細",
     "active_files": "アクティブなファイル",
     "showing_filtered": "一致する{{filtered}}件のセッションを表示中",
-    "subtitle_desc": "選択した集計期間外のセッションも含む、このプロジェクトの全履歴セッション。",
+    "subtitle_desc": "選択した期間内のセッションです。日付を展開すると詳細を読み込みます。",
     "search_placeholder": "タイトル、セッション ID、モデル、またはプロジェクトを検索します...",
     "no_matching_sessions": "検索クエリに一致するセッションはありません",
     "clear_search_hint": "検索クエリをクリアするか、別の用語を検索してみてください。",
@@ -473,7 +473,10 @@
     "no_trend_data": "この範囲に日別のアクティビティはありません。",
     "analytics_range": "集計期間：{{start}} – {{end}} · {{timezone}}",
     "close_aria": "プロジェクト詳細を閉じる",
-    "search_aria": "プロジェクト セッションを検索する"
+    "search_aria": "プロジェクト セッションを検索する",
+    "load_more_days": "さらに日付を読み込む",
+    "load_more_sessions": "さらにセッションを読み込む",
+    "retry": "再試行"
   },
   "ranges": {
     "1d": "過去 1 日",
