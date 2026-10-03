@@ -15,8 +15,6 @@ use std::{
     path::Path,
 };
 
-const DAYS_PER_PAGE: usize = 7;
-
 pub fn create_tables(db: &Connection) -> Result<(), String> {
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS project_session_index (
@@ -248,7 +246,8 @@ pub fn query_days(
     before: Option<&str>,
     timezone: &str,
 ) -> Result<ProjectSessionDaysResponse, String> {
-    let (start, end, _) = resolve_range(range, timezone)?;
+    let (start, end, range_days) = resolve_range(range, timezone)?;
+    let days_per_page = range_days as usize;
     let query = query.trim().to_lowercase();
     let (total_sessions, matching_sessions) = db.query_row(
         "SELECT COUNT(DISTINCT d.path), COUNT(DISTINCT CASE WHEN instr(i.search_text, ?4) > 0 OR ?4 = '' THEN d.path END)
@@ -264,7 +263,7 @@ pub fn query_days(
     ).map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(
-            params![project, start, end, query, before, DAYS_PER_PAGE + 1],
+            params![project, start, end, query, before, days_per_page + 1],
             |row| {
                 Ok(ProjectSessionDay {
                     date: row.get(0)?,
@@ -278,8 +277,8 @@ pub fn query_days(
     let mut days = rows
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
-    let has_more = days.len() > DAYS_PER_PAGE;
-    days.truncate(DAYS_PER_PAGE);
+    let has_more = days.len() > days_per_page;
+    days.truncate(days_per_page);
     let next_before = if has_more {
         days.last().map(|day| day.date.clone())
     } else {
@@ -454,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn paginates_only_selected_project_dates_and_counts_resumed_sessions_once() {
+    fn loads_all_selected_project_dates_and_counts_resumed_sessions_once() {
         let mut fixture = Fixture::new();
         let mut rows = (1..=10)
             .map(|index| day(&format!("2026-07-{index:02}"), "/repo/app"))
@@ -466,11 +465,11 @@ mod tests {
         fixture.sync();
         let first = fixture.days("", None);
         assert_eq!(first.total_sessions, 1);
-        assert_eq!(first.days.len(), 7);
+        assert_eq!(first.days.len(), 10);
         assert_eq!(first.days[0].date, "2026-07-10");
         assert_eq!(first.days[0].total_tokens, 140);
-        assert_eq!(first.next_before.as_deref(), Some("2026-07-04"));
-        let second = fixture.days("", first.next_before.as_deref());
+        assert!(first.next_before.is_none());
+        let second = fixture.days("", Some("2026-07-04"));
         assert_eq!(
             second
                 .days
@@ -492,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn searches_unloaded_days_without_changing_total_count() {
+    fn searches_all_selected_days_without_changing_total_count() {
         let mut fixture = Fixture::new();
         for index in 1..=10 {
             fixture.seed(
@@ -501,7 +500,7 @@ mod tests {
             );
         }
         fixture.sync();
-        assert!(!fixture
+        assert!(fixture
             .days("", None)
             .days
             .iter()
@@ -513,6 +512,28 @@ mod tests {
         assert_eq!(fixture.days("gpt-5", None).matching_sessions, 10);
         assert_eq!(fixture.days("/repo/app", None).matching_sessions, 10);
         assert_eq!(fixture.days("%", None).matching_sessions, 0);
+    }
+
+    #[test]
+    fn loads_every_day_for_short_long_and_custom_ranges() {
+        let mut fixture = Fixture::new();
+        let timezone = "UTC";
+        for range in ["1d", "7d", "30d", "custom:2026-07-01_2026-07-10"] {
+            let (start, end, count) = resolve_range(range, timezone).unwrap();
+            let dates = crate::date::list_date_keys(&start, &end).unwrap();
+            fixture.seed(
+                range,
+                dates.iter().map(|date| day(date, "/repo/app")).collect(),
+            );
+            fixture.sync();
+            let result = query_days(&fixture.db, "/repo/app", range, "", None, timezone).unwrap();
+            assert_eq!(result.start_date, start);
+            assert_eq!(result.end_date, end);
+            assert_eq!(result.days.len(), count as usize);
+            assert_eq!(result.days.first().unwrap().date, end);
+            assert_eq!(result.days.last().unwrap().date, start);
+            assert!(result.next_before.is_none());
+        }
     }
 
     #[test]

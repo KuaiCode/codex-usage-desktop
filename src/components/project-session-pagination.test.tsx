@@ -34,6 +34,26 @@ describe("project session pagination", () => {
     await i18n.changeLanguage("en");
   });
 
+  it("shows all selected-range days immediately while loading session details on expansion", async () => {
+    const dates = Array.from({ length: 10 }, (_, index) => `2026-07-${String(10 - index).padStart(2, "0")}`);
+    invoke.mockImplementation(async (command: string, args: any) => {
+      if (command === "fetch_project_analytics") throw new Error("analytics offline");
+      if (command === "fetch_project_session_days") return response(dates);
+      if (command === "fetch_project_day_sessions") return [session(args.date)];
+      throw new Error(command);
+    });
+    renderModal();
+    await screen.findByText("Task 0");
+    expect([...document.querySelectorAll('[id^="date-group-"]')].map((group) => group.id))
+      .toEqual(dates.map((date) => `date-group-${date}`));
+    expect(screen.queryByRole("button", { name: "Load more days" })).not.toBeInTheDocument();
+    expect(invoke.mock.calls.filter(([command]) => command === "fetch_project_day_sessions")).toHaveLength(1);
+    await userEvent.click(within(document.getElementById("date-group-2026-07-01")!).getByRole("button"));
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("fetch_project_day_sessions", {
+      project: project.project, range: "custom:2026-07-01_2026-07-10", date: "2026-07-01", query: "",
+    }));
+  });
+
   it("appends days without loading their details or changing the session count", async () => {
     invoke.mockImplementation(async (command: string, args: any) => {
       if (command === "fetch_project_analytics") throw new Error("analytics offline");
