@@ -1147,8 +1147,13 @@ describe("App", () => {
     const card = within(projectDialog.querySelector<HTMLElement>("#date-group-2026-06-11")!).getByText("Project task", { selector: "h3" }).closest("article")!;
     collapse.focus();
     await user.tab();
+    const loadMoreButton = within(projectDialog).getByRole("button", { name: "Load more days" });
+    expect(loadMoreButton).toHaveFocus();
+    await user.tab();
     const sessionsButton = within(projectDialog).getByRole("button", { name: "View in Sessions Tab" });
     expect(sessionsButton).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(loadMoreButton).toHaveFocus();
     await user.tab({ shift: true });
     expect(collapse).toHaveFocus();
     const scroll = within(projectDialog).getByTestId("project-modal-scroll");
