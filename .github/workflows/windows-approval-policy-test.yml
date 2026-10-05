@@ -1,0 +1,40 @@
+name: Windows approval policy test build
+
+on:
+  push:
+    branches: [validation/codex-approval-policy]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:web
+      - run: rustfmt --check --edition 2021 src-tauri/src/codex_limits.rs
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
+      - name: Build Windows test executable
+        run: pnpm tauri build --no-bundle
+      - uses: actions/upload-artifact@v6
+        with:
+          name: codex-usage-desktop-approval-policy-test-windows-x64
+          path: src-tauri/target/release/codex-usage-desktop.exe
+          if-no-files-found: error
+          retention-days: 14
