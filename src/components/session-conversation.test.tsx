@@ -8,7 +8,7 @@ import type { SessionReplayDetail } from "@/lib/api";
 import { ConversationItem } from "./session-detail-modal";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 
-it("renders the reported mapped orchestration as five decoded results with one outer token badge", async () => {
+it("renders the reported mapped orchestration as individual activities without its allSettled wrapper or process timing", async () => {
   await i18n.changeLanguage("en");
   const [call, response] = mixedOrchestration;
   const output = response.payload.output!;
@@ -25,21 +25,22 @@ it("renders the reported mapped orchestration as five decoded results with one o
     }],
   };
   render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={mixedOrchestration.map((record) => JSON.stringify(record))} />);
-  expect(screen.getByRole("button", { name: /exec · completed/ })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /exec · completed/ })).not.toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: /Ran/ })).toHaveLength(3);
+  expect(screen.getAllByRole("button", { name: /Waited for background terminal/ })).toHaveLength(2);
+  expect(screen.queryByText(/Promise.allSettled/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Exit code:|Wall time:/)).not.toBeInTheDocument();
   expect(screen.queryByText(/write_stdin · completed/)).not.toBeInTheDocument();
   expect(screen.queryByText(/Script completed/)).not.toBeInTheDocument();
   expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
   expect(screen.getAllByRole("button", { name: /^Output #/ })).toHaveLength(5);
   expect(screen.getByText("Process session: 85274")).toBeInTheDocument();
   expect(screen.getByText("Process session: 25450")).toBeInTheDocument();
-  expect(screen.getByText("Exit code: 101")).toBeInTheDocument();
   const failed = screen.getByRole("button", { name: "Output #4" });
   expect(failed.parentElement).toHaveClass("border-error/40");
   const first = screen.getByRole("button", { name: "Output #1" });
   await userEvent.click(first);
   expect(first.parentElement?.querySelector("pre")?.textContent).toContain(JSON.parse(output[1].text).output.trim());
-  await userEvent.click(screen.getByRole("button", { name: /exec · completed/ }));
-  expect(screen.getByRole("button", { name: /exec · completed/ }).parentElement?.querySelector("pre")?.textContent).toBe(call.payload.input);
   await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
   expect(screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.querySelector("pre")?.textContent).toContain(JSON.stringify(response));
 });
@@ -203,7 +204,9 @@ it("renders nested orchestration calls as ordered CLI-style activities", async (
   render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={[]} />);
   expect(screen.getByRole("button", { name: /Ran/ }).closest(".rounded-lg")).toHaveClass("border-cyan-300/70", "bg-cyan-50/70");
   const activities = screen.getAllByRole("button");
-  expect(activities[0]).toHaveTextContent("Ran (1s) pnpm test");
+  expect(activities[0]).toHaveTextContent("Ran pnpm test");
+  expect(document.body).not.toHaveTextContent("Exit code:");
+  expect(document.body).not.toHaveTextContent("Wall time:");
   expect(activities[1]).toHaveTextContent("Edited src/a.ts+1-1");
   expect(activities[2]).toHaveTextContent("Viewed Image");
   expect(activities[2]).toHaveTextContent("/tmp/result.png");

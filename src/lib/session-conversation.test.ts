@@ -24,13 +24,60 @@ describe("conversation projection", () => {
     expect(activity.displayToolName).toBe("exec");
     expect(activity.argumentEntries).toEqual([]);
     expect(activity.argumentsText).toBe(call.payload.input);
-    expect(activity.nestedActivities).toBeNull();
+    expect(activity.nestedActivities).toMatchObject([
+      { kind: "command", command: "rtk proxy rg -n 'unparsedOutputText' src/components/session-detail-modal.tsx src/lib/session-conversation.ts", output: null },
+      { kind: "command", command: "rtk proxy pnpm exec vitest run src/lib/session-conversation.test.ts src/components/session-conversation.test.tsx", output: null },
+      { kind: "command", command: "rtk proxy pnpm typecheck", output: null },
+      { kind: "terminal", sessionId: 78347 },
+      { kind: "terminal", sessionId: 99948 },
+    ]);
     expect(activity.unpairedOutputs).toHaveLength(5);
     expect(activity.unpairedOutputs[0].stdout).toContain("unparsedOutputText");
     expect(activity.unpairedOutputs[1].sessionId).toBe(85274);
     expect(activity.unpairedOutputs[3].exitCode).toBe(101);
     expect(activity.unpairedOutputs[4].sessionId).toBe(99948);
     expect(activity.outputText).toBeNull();
+  });
+
+  it("projects literal allSettled calls and pairs only indexed parallel results", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'const results = await Promise.allSettled([tools.exec_command({cmd:"first"}), tools.exec_command({cmd:"second"})]); results.forEach((r,i)=>text({i,...r}));',
+      output: JSON.stringify([
+        { type: "input_text", text: JSON.stringify({ i: 1, status: "rejected", reason: "unavailable" }) },
+        { type: "input_text", text: JSON.stringify({ i: 0, status: "fulfilled", value: { exit_code: 0, output: "first response" } }) },
+      ]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { command: "first", output: { stdout: "first response" } },
+      { command: "second", output: { rejected: true, stderr: "unavailable" } },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+  });
+
+  it("projects each literal terminal poll in an allSettled array", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'await Promise.allSettled([tools.write_stdin({session_id:42,chars:""}),tools.write_stdin({session_id:43,chars:""})].map(async p=>text(await p)));',
+      output: JSON.stringify([{ type: "input_text", text: JSON.stringify({ exit_code: 0, output: "unindexed response" }) }]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "terminal", sessionId: 42, output: null },
+      { kind: "terminal", sessionId: 43, output: null },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs[0].stdout).toBe("unindexed response");
+  });
+
+  it.each([
+    'await Promise.allSettled([enabled && tools.exec_command({cmd:"first"}),tools.exec_command({cmd:"second"})]);',
+    'await Promise.allSettled([["first",1]].map(async ([cmd,max_output_tokens])=>{if(enabled)text(await tools.exec_command({cmd,max_output_tokens}));}));',
+    'if(enabled) await Promise.allSettled([tools.exec_command({cmd:"first"}),tools.exec_command({cmd:"second"})]);',
+    'await Promise.allSettled([tools.exec_command(options),tools.exec_command({cmd:"second"})]);',
+  ])("retains unsupported allSettled scripts: %s", (argumentsJson) => {
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: argumentsJson })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+    expect(block.entry.activity?.argumentsText).toBe(argumentsJson);
   });
 
   it("does not infer source ordering from unindexed concurrent results", () => {

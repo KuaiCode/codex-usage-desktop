@@ -1253,7 +1253,7 @@ describe("session titles", () => {
     const tokenMetadata = await screen.findByText("87k tokens");
     const activityButton = tokenMetadata.closest("button");
     expect(activityButton).toHaveTextContent("Ran");
-    expect(activityButton).toHaveTextContent("exit 7");
+    expect(activityButton).not.toHaveTextContent("exit 7");
     expect(activityButton).toHaveTextContent("pnpm tauri dev");
     expect(document.body).not.toHaveTextContent("[31m");
     expect(tokenMetadata).toHaveAttribute("title", expect.stringContaining("Input (incl. cache): 86,948"));
@@ -1262,8 +1262,8 @@ describe("session titles", () => {
     expect(tokenMetadata).toHaveAttribute("title", expect.stringContaining("Reasoning: 6"));
     expect(tokenMetadata).toHaveAttribute("title", expect.stringContaining("Total tokens: 87,001"));
     await userEvent.click(screen.getByRole("button", { name: /Explored/ }));
-    const successfulActivity = screen.getByRole("button", { name: /Ran \(1s, exit 0\) rtk sed/ });
-    expect(successfulActivity).toHaveTextContent("exit 0");
+    const successfulActivity = screen.getByRole("button", { name: /Ran rtk sed/ });
+    expect(successfulActivity).not.toHaveTextContent("exit 0");
 
     await i18n.changeLanguage("zh");
     expect(activityButton).toHaveTextContent("Ran");

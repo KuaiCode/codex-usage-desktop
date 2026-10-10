@@ -1,6 +1,6 @@
 import {
-  buildSessionConversation, cleanExecOutput, formatActivityDuration, formatJsonForDisplay, formatToolArgumentValue,
-  parseToolContentBlocks, parseUserInputAnswers, processExitCode, processSignal, splitWebSearchResults, summarizeOutput,
+  buildSessionConversation, cleanExecOutput, formatJsonForDisplay, formatToolArgumentValue,
+  parseToolContentBlocks, parseUserInputAnswers, processSignal, splitWebSearchResults, summarizeOutput,
   type ConversationBlock, type DisplayTokenUsageItem, type ExecOutput, type NestedActivity, type ReplayItem, type TimelineEntry, type TokenUsageItem, type ToolActivity, type UserInputQuestion, type WebSearchResult,
 } from "@/lib/session-conversation";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -579,11 +579,9 @@ function ActivityOutput({ text, expanded, tone }: { text: string; expanded: bool
 
 function ExecOutputMetadata({ output }: { output: ExecOutput }) {
   const { t } = useTranslation();
-  return <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-    {output.exitCode !== null ? <span>{t("sessions.detail.exit_code")}: {output.exitCode}</span> : null}
-    {output.wallTimeSeconds !== null ? <span>{t("sessions.detail.wall_time")}: {formatActivityDuration(output.wallTimeSeconds * 1000)}</span> : null}
-    {output.sessionId !== null ? <span>{t("sessions.detail.process_session")}: {output.sessionId}</span> : null}
-  </div>;
+  return output.sessionId !== null
+    ? <div className="text-[11px] text-muted-foreground">{t("sessions.detail.process_session")}: {output.sessionId}</div>
+    : null;
 }
 
 function ExecResultItem({ output, index }: { output: ExecOutput; index: number }) {
@@ -640,10 +638,9 @@ function NestedActivityItem({ activity }: { activity: NestedActivity }) {
 
   const failed = activity.output?.rejected || (activity.output?.exitCode != null && activity.output.exitCode !== 0);
   const stdout = activity.output?.stdout ? cleanExecOutput(activity.output.stdout) : null;
-  const duration = activity.output?.wallTimeSeconds == null ? null : formatActivityDuration(activity.output.wallTimeSeconds * 1000);
   return <div className="py-1.5">
     <button type="button" className={`flex w-full min-w-0 items-start justify-between gap-3 text-left ${DISCLOSURE_BUTTON_CLASS}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-      <span className="flex min-w-0 gap-1.5"><span className={failed ? "shrink-0 text-error" : "shrink-0 text-muted-foreground"}>•</span><span className="min-w-0 whitespace-pre-wrap break-words"><span className="font-semibold">{t("sessions.detail.activity_ran")}</span>{duration ? ` (${duration})` : ""} {expanded ? activity.command : buildCollapsedPreview(activity.command, 1)}</span></span>
+      <span className="flex min-w-0 gap-1.5"><span className={failed ? "shrink-0 text-error" : "shrink-0 text-muted-foreground"}>•</span><span className="min-w-0 whitespace-pre-wrap break-words"><span className="font-semibold">{t("sessions.detail.activity_ran")}</span> {expanded ? activity.command : buildCollapsedPreview(activity.command, 1)}</span></span>
       <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
     </button>
     {activity.output ? <ExecOutputMetadata output={activity.output} /> : null}
@@ -885,8 +882,6 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
         : item.status === "running"
           ? "running"
           : "success";
-    const duration = formatActivityDuration(item.durationMs);
-    const exitCode = processExitCode(item.output, item.isError);
     const signal = processSignal(item.output);
     const statusTone = activityStatus === "failed"
       ? "text-error"
@@ -905,20 +900,14 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
           onClick={() => setIsExpanded((value) => !value)}
         >
           <span className="flex min-w-0 gap-1.5">
-            <span className={`shrink-0 ${statusTone}`}>•</span>
+            <span className={`shrink-0 ${statusTone}`} title={activityStatus === "failed" || activityStatus === "success" ? t(activityStatus === "failed" ? "sessions.detail.exit_failure_tooltip" : "sessions.detail.exit_success_tooltip") : undefined}>•</span>
             <span className="min-w-0 whitespace-pre-wrap break-words">
               {activityStatus === "running"
                 ? t("sessions.detail.activity_running")
                 : activityStatus === "stopped"
                   ? t("sessions.detail.activity_stopped")
                   : t("sessions.detail.activity_ran")}
-              {duration || activityStatus !== "running" ? " (" : " "}
-              {duration}
-              {duration && activityStatus !== "running" && (activityStatus !== "stopped" || signal) ? ", " : null}
-              {activityStatus === "stopped" ? signal : activityStatus !== "running" ? (
-                <span className={statusTone} title={t(exitCode === 0 ? "sessions.detail.exit_success_tooltip" : "sessions.detail.exit_failure_tooltip")}>exit {exitCode}</span>
-              ) : null}
-              {duration || activityStatus !== "running" ? ") " : null}
+              {activityStatus === "stopped" && signal ? ` (${signal}) ` : " "}
               {isExpanded ? execArguments.command : buildCollapsedPreview(execArguments.command, 1)}
             </span>
           </span>
@@ -987,10 +976,8 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
             <span className="break-all font-mono text-foreground">{execArguments.workdir}</span>
           </div>
         ) : null}
-        {execOutput && unpairedOutputs.length === 0 && (execOutput.exitCode !== null || execOutput.wallTimeSeconds !== null || execOutput.sessionId !== null) ? (
+        {execOutput && unpairedOutputs.length === 0 && execOutput.sessionId !== null ? (
           <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-            {execOutput.exitCode !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.exit_code")}: {execOutput.exitCode}</span> : null}
-            {execOutput.wallTimeSeconds !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.wall_time")}: {execOutput.wallTimeSeconds}s</span> : null}
             {execOutput.sessionId !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.process_session")}: {execOutput.sessionId}</span> : null}
           </div>
         ) : null}

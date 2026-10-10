@@ -39,8 +39,13 @@ describe("session command responses", () => {
       await card.click();
       const dialog = $('[aria-labelledby="session-detail-title"]');
       await dialog.waitForDisplayed();
-      const outer = dialog.$('button*=exec · completed');
-      await outer.waitForExist({ timeout: 15_000 });
+      await browser.waitUntil(async () => (await dialog.$$('button*=Ran rtk').length) === 3, { timeout: 15_000 });
+      const commands = await dialog.$$('button*=Ran rtk');
+      expect(await dialog.$$('button*=exec · completed')).toHaveLength(0);
+      expect(await dialog.$$('button*=Waited for background terminal')).toHaveLength(2);
+      expect(await dialog.getText()).not.toContain("Promise.allSettled");
+      expect(await dialog.getText()).not.toContain("Exit code:");
+      expect(await dialog.getText()).not.toContain("Wall time:");
       expect(await dialog.$$('button*=Output #')).toHaveLength(5);
       expect(await dialog.$$('button*=write_stdin · completed')).toHaveLength(0);
       const first = dialog.$('button=Output #1');
@@ -52,15 +57,11 @@ describe("session command responses", () => {
       const result = JSON.parse(mixedOrchestration[1].payload.output![1].text);
       await expect(first.$("..").$('pre')).toHaveText(expect.stringContaining(result.output.trim()));
       const failed = dialog.$('button=Output #4');
-      await expect(failed.$("..")).toHaveText(expect.stringContaining("Exit code: 101"));
+      await expect(failed.$("..")).toHaveAttribute("class", expect.stringContaining("border-error/40"));
       await expect(dialog.$('button=Output #5').$("..")).toHaveText(expect.stringContaining("Process session: 99948"));
-      await outer.execute((element) => element.scrollIntoView({ block: "center" }));
-      await outer.click();
-      await expect(outer.$("..").$('pre')).toHaveText(expect.stringContaining(mixedOrchestration[0].payload.input!.trim()));
-      expect(await outer.$("..").$$('[data-testid="token-metadata"]')).toHaveLength(1);
-      await outer.click();
+      expect(await dialog.$$('[data-testid="token-metadata"]')).toHaveLength(1);
       await first.click();
-      await outer.execute((element) => element.scrollIntoView({ block: "start" }));
+      await commands[0].execute((element) => element.scrollIntoView({ block: "start" }));
       await browser.saveScreenshot("/tmp/codex-usage-mixed-replay.png");
       await browser.keys("Escape");
       await dialog.waitForExist({ reverse: true });
@@ -91,7 +92,7 @@ describe("session command responses", () => {
       { type: "session_meta", payload: { id, cwd: "/command-response-test" } },
       { type: "turn_context", payload: { turn_id: "response-turn", model: "gpt-5" } },
       { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Check command responses" }] } },
-      { type: "response_item", payload: { type: "custom_tool_call", name: "exec", call_id: "batch", input: 'text(await tools.exec_command({cmd:"first-command"})); text(await tools.exec_command({cmd:"second-command"})); text(await tools.exec_command({cmd:"third-command"}));' } },
+      { type: "response_item", payload: { type: "custom_tool_call", name: "exec", call_id: "batch", input: 'const results = await Promise.allSettled([tools.exec_command({cmd:"first-command"}),tools.exec_command({cmd:"second-command"}),tools.exec_command({cmd:"third-command"})]); results.forEach((r,i)=>text({i,...r}));' } },
       { type: "response_item", payload: { type: "custom_tool_call_output", call_id: "batch", output } },
       { type: "response_item", payload: { type: "custom_tool_call", name: "exec", call_id: "poll", input: 'text(await tools.write_stdin({session_id:42,chars:""}));' } },
       { type: "response_item", payload: { type: "custom_tool_call_output", call_id: "poll", output: [{ type: "input_text", text: JSON.stringify({ exit_code: 0, output: "third command finished" }) }] } },

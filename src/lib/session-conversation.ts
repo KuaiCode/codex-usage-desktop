@@ -387,6 +387,7 @@ function scanToolScript(value: string) {
   for (let index = 0; index < value.length; index += 1) {
     const character = value[index];
     if (quote) {
+      code += " ";
       if (escaped) escaped = false;
       else if (character === "\\") escaped = true;
       else if (character === quote) quote = null;
@@ -400,13 +401,14 @@ function scanToolScript(value: string) {
     }
     if (value.startsWith("//", index)) {
       const end = value.indexOf("\n", index + 2);
+      code += " ".repeat((end < 0 ? value.length : end) - index);
       index = end < 0 ? value.length : end - 1;
       continue;
     }
     if (value.startsWith("/*", index)) {
       const end = value.indexOf("*/", index + 2);
+      code += " ".repeat((end < 0 ? value.length : end + 2) - index);
       index = end < 0 ? value.length : end + 1;
-      code += " ";
       continue;
     }
     code += character;
@@ -418,23 +420,76 @@ function scanToolScript(value: string) {
   }
   // Source order is not execution order inside callbacks, branches or loops.
   const dynamic = /=>|&&|\|\||\?(?![.?])|\b(?:for|while|if|switch|function)\b|\bPromise\s*\.\s*(?:all|allSettled|race|any)\s*\(/.test(code);
-  return { calls, dynamic: dynamic || uncertainSyntax };
+  return { calls, code, dynamic: dynamic || uncertainSyntax };
+}
+
+function closingDelimiter(code: string, start: number, open: string, close: string) {
+  let depth = 0;
+  for (let index = start; index < code.length; index += 1) {
+    if (code[index] === open) depth += 1;
+    if (code[index] === close && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function parallelToolScript(value: string) {
+  const { code } = scanToolScript(value);
+  const prefix = code.match(/^\s*(?:const\s+[\w$]+\s*=\s*)?await\s+Promise\s*\.\s*allSettled\s*\(\s*\[/);
+  if (!prefix) return null;
+  const arrayStart = prefix[0].length - 1;
+  const arrayEnd = closingDelimiter(code, arrayStart, "[", "]");
+  const callEnd = closingDelimiter(code, code.lastIndexOf("(", arrayStart), "(", ")");
+  if (arrayEnd < 0 || callEnd < 0) return null;
+  const array = value.slice(arrayStart, arrayEnd + 1);
+  const mapping = value.slice(arrayEnd + 1, callEnd).trim();
+  let commands: string;
+  // Recognize the literal command tuples used by code-mode without evaluating JS.
+  if (/^\.map\(\s*async\s*\(\s*\[\s*cmd\s*,\s*max_output_tokens\s*\]\s*\)\s*=>\s*text\(\s*await\s*tools\.exec_command\(\s*\{\s*cmd\s*,\s*max_output_tokens(?:\s*,\s*yield_time_ms\s*:\s*\d+)?\s*\}\s*\)\s*\)\s*\)$/.test(mapping)) {
+    try {
+      const arrayCode = code.slice(arrayStart, arrayEnd + 1);
+      const tuples: unknown = JSON.parse(array.replace(/,/g, (comma, index: number) => /^,\s*\]/.test(arrayCode.slice(index)) ? "" : comma));
+      if (!Array.isArray(tuples) || tuples.length === 0
+        || !tuples.every((tuple) => Array.isArray(tuple) && tuple.length === 2 && typeof tuple[0] === "string" && typeof tuple[1] === "number")) return null;
+      commands = tuples.map(([cmd]) => `tools.exec_command(${JSON.stringify({ cmd })});`).join("\n");
+    } catch {
+      return null;
+    }
+  } else {
+    if (mapping && !/^\.map\(\s*async\s+([\w$]+)\s*=>\s*text\(\s*await\s+\1\s*\)\s*\)$/.test(mapping)) return null;
+    const script = scanToolScript(array);
+    if (script.dynamic || script.calls.length === 0) return null;
+    let skeleton = script.code;
+    for (const call of script.calls.toReversed()) {
+      const end = closingDelimiter(script.code, call.argumentStart - 1, "(", ")");
+      if (end < 0) return null;
+      skeleton = `${skeleton.slice(0, call.index)}CALL${skeleton.slice(end + 1)}`;
+    }
+    if (!/^\[\s*(?:CALL\s*,\s*)*CALL\s*,?\s*\]$/.test(skeleton)) return null;
+    commands = array.slice(1, -1);
+  }
+  const tail = value.slice(callEnd + 1);
+  const tailScript = scanToolScript(tail);
+  // Printing settled results adds no tool activities; dynamic tool calls stay raw.
+  if (tailScript.calls.length && tailScript.dynamic) return null;
+  return `${commands}\n${tailScript.calls.length ? tail : ""}`;
 }
 
 function parseNestedActivities(value: string | null, output: string | null) {
   if (!value) return null;
+  const parallel = parallelToolScript(value);
+  value = parallel ?? value;
   const { calls, dynamic } = scanToolScript(value);
   if (dynamic || calls.some((call) => !["exec_command", "write_stdin", "apply_patch", "view_image"].includes(call.name))
     || calls.filter((call) => call.name === "view_image").length > 1
-    || !calls.some((call) => call.name !== "write_stdin")
-    || (calls.length === 1 && calls[0].name === "exec_command")) return null;
+    || (!parallel && !calls.some((call) => call.name !== "write_stdin"))
+    || (!parallel && calls.length === 1 && calls[0].name === "exec_command")) return null;
   const content = parseToolContentBlocks(output);
   const { results: execResults, outputs, allIndexed, duplicateIndices, unparsedOutputText } = execResultsFromContent(content, output);
   const processCount = calls.filter((call) => call.name === "exec_command" || call.name === "write_stdin").length;
   const emittedInOrder = calls.filter((call) => call.name === "exec_command" || call.name === "write_stdin")
     .every((call) => /\btext\s*\(\s*await\s*$/.test(value.slice(0, call.index)));
   const canPairResults = !duplicateIndices && ((allIndexed && processCount === calls.length)
-    || (!allIndexed && emittedInOrder && execResults.size === processCount));
+    || (!parallel && !allIndexed && emittedInOrder && execResults.size === processCount));
   const pairedResults = canPairResults ? execResults : new Map<number, ExecOutput | null>();
   let execIndex = 0;
   let imageIndex = 0;
@@ -464,7 +519,7 @@ function parseNestedActivities(value: string | null, output: string | null) {
     }
   }
 
-  return activities.length > 0 && (calls.length > 1 || activities.some((activity) => activity.kind !== "command"))
+  return activities.length > 0 && (parallel || calls.length > 1 || activities.some((activity) => activity.kind !== "command"))
     ? { activities, unparsedOutputText, unpairedOutputs: outputs.filter(({ index }) => !canPairResults || index >= execIndex).map(({ result }) => result) } : null;
 }
 
@@ -515,13 +570,6 @@ export type UserInputQuestion = {
   question: string;
   options: Array<{ label: string; description: string }>;
 };
-
-export function formatActivityDuration(ms: number | null) {
-  if (ms === null) return null;
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  const seconds = ms / 1000;
-  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
-}
 
 export function processExitCode(output: string | null, isError: boolean) {
   if (output) {
