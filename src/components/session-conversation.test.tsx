@@ -7,6 +7,47 @@ import { buildConversation } from "@/lib/session-conversation";
 import type { SessionReplayDetail } from "@/lib/api";
 import { ConversationItem } from "./session-detail-modal";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
+import structuredCommands from "../../e2e/fixtures/structured-command-responses.json";
+
+it("renders structured parallel responses under their commands with stable identities", async () => {
+  await i18n.changeLanguage("en");
+  const executions = structuredCommands.flatMap((record) => {
+    const item = record.payload.item;
+    if (!item) return [];
+    return [{
+      callId: item.id, name: "exec_command", status: item.status,
+      arguments: JSON.stringify({ cmd: item.command[2], workdir: "/native-response-test" }),
+      output: JSON.stringify({ output: item.stdout ?? item.aggregated_output, stderr: item.stderr ?? null, exit_code: item.exit_code, session_id: item.process_id }),
+      stderr: null, startedAt: null, completedAt: record.timestamp, durationMs: null, isError: item.exit_code !== 0,
+    }];
+  });
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "native-turn", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: "native-batch", name: "exec", status: "completed",
+      arguments: structuredCommands[0].payload.input!, output: JSON.stringify(structuredCommands[3].payload.output),
+      commandExecutions: executions, stderr: null, startedAt: null, completedAt: null, durationMs: null, isError: false,
+      rawJsonlLineNumbers: [1, 2, 3, 4, 7],
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={structuredCommands.map((record) => JSON.stringify(record))} />);
+  const first = screen.getByRole("button", { name: /Ran first-command/ });
+  const second = screen.getByRole("button", { name: /Ran second-command/ });
+  const third = screen.getByRole("button", { name: /Ran third-command/ });
+  expect(first.parentElement?.querySelector("pre")?.textContent).toContain("first response line 1");
+  expect(first.parentElement?.textContent).not.toContain("second response");
+  expect(second.parentElement?.textContent).toContain("second response");
+  expect(second.parentElement?.textContent).toContain("second error");
+  expect(second.querySelector(".text-error")).toBeInTheDocument();
+  expect(third.parentElement?.textContent).toContain("third command finished");
+  expect(screen.queryByRole("button", { name: /^Output #/ })).not.toBeInTheDocument();
+  await userEvent.click(first);
+  expect(first).toHaveAttribute("aria-expanded", "true");
+  expect(first.parentElement?.querySelector("pre")?.textContent).toContain("first response line 8");
+  await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
+  expect(screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.textContent).toContain("exec-third");
+});
 
 it("renders the reported mapped orchestration as individual activities without its allSettled wrapper or process timing", async () => {
   await i18n.changeLanguage("en");

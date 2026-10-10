@@ -53,6 +53,7 @@ struct ReplayParseState {
     process_exit_codes: BTreeMap<String, Vec<i64>>,
     active_exec_call_id: Option<String>,
     token_target_tool: Option<(String, String)>,
+    command_executions: BTreeMap<String, (String, SessionReplayToolCall, Vec<usize>)>,
 }
 
 pub fn fetch_session_detail(db: &Connection, path: &str) -> Result<SessionReplayDetail, String> {
@@ -100,6 +101,7 @@ fn parse_session_detail_with_agents(
         };
         state.ingest(&entry, line_index + 1);
     }
+    state.materialize_command_executions();
 
     let mut turns = state
         .turn_order
@@ -340,7 +342,9 @@ impl ReplayParseState {
         if event_type == "item_completed"
             && event.pointer("/item/type").and_then(Value::as_str) == Some("CommandExecution")
         {
-            if let (Some(call_id), Some(exit_code)) = (
+            self.ingest_command_execution(&turn_id, event, timestamp.clone(), line_number);
+            if let (None, Some(call_id), Some(exit_code)) = (
+                event.pointer("/item/id").and_then(Value::as_str),
                 self.active_exec_call_id.as_ref(),
                 event.pointer("/item/exit_code").and_then(Value::as_i64),
             ) {
@@ -508,6 +512,8 @@ impl ReplayParseState {
                     completed_at: None,
                     duration_ms: None,
                     is_error: false,
+                    command_executions: Vec::new(),
+                    native_command: false,
                 };
                 let turn = self.turn_mut(&turn_id);
                 turn.tool_calls.push(tool.clone());
@@ -543,6 +549,232 @@ impl ReplayParseState {
                     })
             }
             _ => {}
+        }
+    }
+
+    fn ingest_command_execution(
+        &mut self,
+        turn_id: &str,
+        event: &Value,
+        timestamp: Option<String>,
+        line_number: usize,
+    ) {
+        let item = &event["item"];
+        let Some(id) = string_field(item, "id") else {
+            return;
+        };
+        let command = item["command"]
+            .as_str()
+            .map(ToString::to_string)
+            .or_else(|| {
+                let args = item["command"]
+                    .as_array()?
+                    .iter()
+                    .map(Value::as_str)
+                    .collect::<Option<Vec<_>>>()?;
+                // Codex executes shell commands through a login-shell wrapper.
+                Some(
+                    if args.len() == 3
+                        && matches!(args[1], "-lc" | "-c")
+                        && matches!(args[0].rsplit('/').next(), Some("zsh" | "bash" | "sh"))
+                    {
+                        args[2].to_string()
+                    } else {
+                        args.join(" ")
+                    },
+                )
+            });
+        let Some(command) = command.filter(|command| !command.is_empty()) else {
+            return;
+        };
+        let millis_timestamp = |key: &str| {
+            event[key]
+                .as_i64()
+                .filter(|ms| *ms > 0)
+                .and_then(DateTime::<Utc>::from_timestamp_millis)
+                .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+        };
+        let started_at = millis_timestamp("started_at_ms");
+        let status = string_field(item, "status");
+        let running = matches!(status.as_deref(), Some("in_progress" | "running"));
+        let completed_at = if running {
+            None
+        } else {
+            millis_timestamp("completed_at_ms").or(timestamp)
+        };
+        let workdir = string_field(item, "cwd").map(|cwd| {
+            reqwest::Url::parse(&cwd)
+                .ok()
+                .and_then(|url| url.to_file_path().ok())
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or(cwd)
+        });
+        let stdout = item["stdout"]
+            .as_str()
+            .or_else(|| item["aggregated_output"].as_str());
+        let exit_code = item["exit_code"].as_i64();
+        let process_id = item["process_id"]
+            .as_str()
+            .map(ToString::to_string)
+            .or_else(|| item["process_id"].as_i64().map(|id| id.to_string()));
+        let terminal = item["source"].as_str() == Some("unified_exec_interaction");
+        let arguments = if terminal {
+            serde_json::json!({"session_id": process_id, "chars": item["interaction_input"].as_str().unwrap_or("")})
+        } else {
+            serde_json::json!({"cmd": command, "workdir": workdir})
+        };
+        let tool = SessionReplayToolCall {
+            call_id: Some(id.clone()),
+            name: if terminal {
+                "write_stdin"
+            } else {
+                "exec_command"
+            }
+            .to_string(),
+            status: if running {
+                Some("running".to_string())
+            } else {
+                status
+            },
+            arguments: Some(arguments.to_string()),
+            output: Some(
+                serde_json::json!({
+                    "output": stdout, "stderr": item["stderr"], "exit_code": exit_code,
+                    "session_id": process_id,
+                })
+                .to_string(),
+            ),
+            stderr: None,
+            duration_ms: duration_between(started_at.as_deref(), completed_at.as_deref())
+                .or_else(|| item["duration_ms"].as_i64())
+                .or_else(|| {
+                    item["duration"]["secs"].as_i64().map(|secs| {
+                        secs * 1000 + item["duration"]["nanos"].as_i64().unwrap_or(0) / 1_000_000
+                    })
+                }),
+            started_at,
+            completed_at,
+            is_error: exit_code.is_some_and(|code| code != 0)
+                || matches!(item["status"].as_str(), Some("failed" | "declined")),
+            command_executions: Vec::new(),
+            native_command: true,
+        };
+        let (_, previous, lines) = self
+            .command_executions
+            .entry(id)
+            .or_insert_with(|| (turn_id.to_string(), tool.clone(), Vec::new()));
+        *previous = tool;
+        lines.push(line_number);
+    }
+
+    fn materialize_command_executions(&mut self) {
+        let mut executions = std::mem::take(&mut self.command_executions)
+            .into_values()
+            .collect::<Vec<_>>();
+        executions.sort_by_key(|(_, tool, lines)| (tool.started_at.clone(), lines[0]));
+        for (turn_id, execution, lines) in executions {
+            let turn = self.turn_mut(&turn_id);
+            let exact = turn
+                .tool_calls
+                .iter()
+                .position(|tool| tool.call_id == execution.call_id);
+            // Completion can arrive during another tool call. Only the command's recorded
+            // start time can place it inside an outer exec; ambiguous records stay independent.
+            let candidates = turn
+                .tool_calls
+                .iter()
+                .enumerate()
+                .filter(|(_, tool)| {
+                    execution.name == "exec_command"
+                        && tool.name.rsplit('.').next() == Some("exec")
+                        && execution
+                            .started_at
+                            .as_deref()
+                            .zip(tool.started_at.as_deref())
+                            .zip(tool.completed_at.as_deref())
+                            .and_then(|((start, from), to)| {
+                                Some((
+                                    DateTime::parse_from_rfc3339(start).ok()?,
+                                    DateTime::parse_from_rfc3339(from).ok()?,
+                                    DateTime::parse_from_rfc3339(to).ok()?,
+                                ))
+                            })
+                            .is_some_and(|(start, from, to)| start >= from && start <= to)
+                        && is_exec_command_call(&tool.name, tool.arguments.as_deref())
+                })
+                .map(|(index, _)| index)
+                .collect::<Vec<_>>();
+            let target = exact.or_else(|| (candidates.len() == 1).then(|| candidates[0]));
+            if let Some(index) = target {
+                let tool = &mut turn.tool_calls[index];
+                if exact.is_some() {
+                    tool.output = execution.output;
+                    tool.stderr = execution.stderr;
+                    if tool.status.as_deref() != Some("stopped") {
+                        tool.status = execution.status;
+                        tool.is_error = execution.is_error;
+                    }
+                    tool.started_at = execution.started_at.or(tool.started_at.take());
+                    tool.completed_at = execution.completed_at;
+                    tool.duration_ms = execution.duration_ms;
+                } else {
+                    tool.command_executions.push(execution);
+                }
+                if let Some(SessionReplayItem::ToolCall { tool: item_tool, raw_jsonl_line_numbers }) = turn.items.iter_mut()
+                    .find(|item| matches!(item, SessionReplayItem::ToolCall { tool: item_tool, .. } if item_tool.call_id == tool.call_id))
+                {
+                    *item_tool = tool.clone();
+                    raw_jsonl_line_numbers.extend(lines);
+                    raw_jsonl_line_numbers.sort_unstable();
+                    raw_jsonl_line_numbers.dedup();
+                }
+            } else {
+                turn.tool_calls.push(execution.clone());
+                let position = turn
+                    .items
+                    .iter()
+                    .position(|item| {
+                        let (SessionReplayItem::Message {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }
+                        | SessionReplayItem::Reasoning {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }
+                        | SessionReplayItem::ToolCall {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }
+                        | SessionReplayItem::Patch {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }
+                        | SessionReplayItem::TokenUsage {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }
+                        | SessionReplayItem::Error {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }
+                        | SessionReplayItem::Notice {
+                            raw_jsonl_line_numbers,
+                            ..
+                        }) = item;
+                        raw_jsonl_line_numbers
+                            .first()
+                            .is_some_and(|line| *line > lines[0])
+                    })
+                    .unwrap_or(turn.items.len());
+                turn.items.insert(
+                    position,
+                    SessionReplayItem::ToolCall {
+                        tool: execution,
+                        raw_jsonl_line_numbers: lines,
+                    },
+                );
+            }
         }
     }
 
@@ -871,6 +1103,8 @@ impl ReplayParseState {
             completed_at: timestamp,
             duration_ms: None,
             is_error,
+            command_executions: Vec::new(),
+            native_command: false,
         };
         turn.tool_calls.push(tool.clone());
         turn.items.push(SessionReplayItem::ToolCall {
@@ -1963,6 +2197,152 @@ mod tests {
     };
 
     static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn pairs_structured_commands_by_identity_even_when_they_finish_after_the_batch() {
+        let records: Vec<Value> = serde_json::from_str(include_str!(
+            "../../e2e/fixtures/structured-command-responses.json"
+        ))
+        .unwrap();
+        let raw = std::iter::once(turn_context(
+            "2026-10-09T12:00:00.000Z",
+            "native-turn",
+            "gpt-6",
+            "/native-response-test",
+        ))
+        .chain(records.iter().map(Value::to_string))
+        .collect::<Vec<_>>()
+        .join("\n");
+        let detail = parse_session_detail(record("/tmp/native.jsonl"), raw);
+        let turn = &detail.turns[0];
+        assert_eq!(turn.tool_calls.len(), 2);
+        let batch = &turn.tool_calls[0];
+        assert_eq!(batch.command_executions.len(), 3);
+        assert_eq!(
+            batch
+                .command_executions
+                .iter()
+                .map(|tool| tool.call_id.as_deref().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["exec-first", "exec-second", "exec-third"]
+        );
+        assert!(!batch.is_error);
+        assert_eq!(
+            batch.command_executions[1].status.as_deref(),
+            Some("failed")
+        );
+        let third = &batch.command_executions[2];
+        assert_eq!(
+            third.started_at.as_deref(),
+            Some("2026-10-09T12:00:01.600Z")
+        );
+        assert_eq!(
+            third.completed_at.as_deref(),
+            Some("2026-10-09T12:00:07.000Z")
+        );
+        assert!(third
+            .output
+            .as_deref()
+            .unwrap()
+            .contains("third command finished"));
+        assert!(turn.tool_calls[1].command_executions.is_empty());
+        assert_eq!(turn.token_events.len(), 1);
+        assert!(
+            matches!(&turn.items[1], SessionReplayItem::TokenUsage { usage, .. } if usage.total_tokens == 1300)
+        );
+        assert!(
+            matches!(&turn.items[0], SessionReplayItem::ToolCall { raw_jsonl_line_numbers, .. }
+            if raw_jsonl_line_numbers.contains(&8))
+        );
+    }
+
+    #[test]
+    fn upserts_structured_ids_and_preserves_commands_without_an_outer_call() {
+        let command = |id: &str, output: &str, status: &str| {
+            event_msg(
+                "2026-10-09T00:00:01.000Z",
+                serde_json::json!({
+                    "type": "item_completed", "item": {
+                        "type": "CommandExecution", "id": id, "command": ["/bin/zsh", "-lc", "same-command"],
+                        "cwd": "file:///repo/with%20space", "status": status, "aggregated_output": output,
+                        "exit_code": if status == "in_progress" { Value::Null } else { Value::from(0) },
+                    }
+                }),
+            )
+        };
+        let detail = parse_session_detail(
+            record("/tmp/native.jsonl"),
+            [
+                command("exec-first", "partial", "in_progress"),
+                command("exec-second", "other command", "completed"),
+                command("exec-first", "complete", "completed"),
+            ]
+            .join("\n"),
+        );
+        let turn = &detail.turns[0];
+        assert_eq!(turn.tool_calls.len(), 2);
+        let first = &turn.tool_calls[0];
+        assert_eq!(first.status.as_deref(), Some("completed"));
+        assert_eq!(
+            serde_json::from_str::<Value>(first.arguments.as_deref().unwrap()).unwrap()["workdir"],
+            "/repo/with space"
+        );
+        assert!(first.output.as_deref().unwrap().contains("complete"));
+        assert!(!first.output.as_deref().unwrap().contains("partial"));
+        assert!(
+            matches!(&turn.items[0], SessionReplayItem::ToolCall { raw_jsonl_line_numbers, .. } if raw_jsonl_line_numbers == &vec![1, 3])
+        );
+    }
+
+    #[test]
+    fn structured_output_overrides_a_direct_calls_printed_preview() {
+        let raw = [
+            response_item("2026-10-09T00:00:01.000Z", serde_json::json!({
+                "type": "function_call", "call_id": "direct", "name": "exec_command", "arguments": "{\"cmd\":\"first\"}",
+            })),
+            event_msg("2026-10-09T00:00:02.000Z", serde_json::json!({
+                "type": "item_completed", "item": {"type": "CommandExecution", "id": "direct", "command": ["first"], "status": "completed", "aggregated_output": "complete output", "exit_code": 0},
+            })),
+            response_item("2026-10-09T00:00:03.000Z", serde_json::json!({
+                "type": "function_call_output", "call_id": "direct", "output": "preview",
+            })),
+        ].join("\n");
+        let detail = parse_session_detail(record("/tmp/native.jsonl"), raw);
+        assert_eq!(detail.turns[0].tool_calls.len(), 1);
+        let tool = &detail.turns[0].tool_calls[0];
+        assert!(tool.command_executions.is_empty());
+        assert!(tool.output.as_deref().unwrap().contains("complete output"));
+    }
+
+    #[test]
+    fn does_not_guess_a_parent_for_a_command_without_a_start_time() {
+        let raw = [
+            response_item("2026-10-09T00:00:01.000Z", serde_json::json!({
+                "type": "custom_tool_call", "call_id": "batch", "name": "exec",
+                "input": "await Promise.allSettled([tools.exec_command({cmd:\"same\"})]);",
+            })),
+            event_msg("2026-10-09T00:00:02.000Z", serde_json::json!({
+                "type": "item_completed", "item": {"type": "CommandExecution", "id": "exec-orphan", "command": ["same"], "status": "completed", "aggregated_output": "orphan output", "exit_code": 0},
+            })),
+            response_item("2026-10-09T00:00:03.000Z", serde_json::json!({
+                "type": "custom_tool_call_output", "call_id": "batch", "output": "Script completed",
+            })),
+            response_item("2026-10-09T00:00:04.000Z", serde_json::json!({
+                "type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Done"}],
+            })),
+        ].join("\n");
+        let detail = parse_session_detail(record("/tmp/native.jsonl"), raw);
+        let turn = &detail.turns[0];
+        assert_eq!(turn.tool_calls.len(), 2);
+        assert!(turn.tool_calls[0].command_executions.is_empty());
+        assert!(turn.tool_calls[1].native_command);
+        assert!(
+            matches!(&turn.items[1], SessionReplayItem::ToolCall { tool, .. } if tool.call_id.as_deref() == Some("exec-orphan"))
+        );
+        assert!(
+            matches!(&turn.items[2], SessionReplayItem::Message { text, .. } if text == "Done")
+        );
+    }
 
     #[test]
     fn preserves_mapped_commands_and_polls_from_reported_session() {

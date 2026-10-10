@@ -636,11 +636,11 @@ function NestedActivityItem({ activity }: { activity: NestedActivity }) {
     </div>;
   }
 
-  const failed = activity.output?.rejected || (activity.output?.exitCode != null && activity.output.exitCode !== 0);
+  const failed = activity.status === "failed" || activity.status === "declined" || activity.output?.rejected || (activity.output?.exitCode != null && activity.output.exitCode !== 0);
   const stdout = activity.output?.stdout ? cleanExecOutput(activity.output.stdout) : null;
   return <div className="py-1.5">
     <button type="button" className={`flex w-full min-w-0 items-start justify-between gap-3 text-left ${DISCLOSURE_BUTTON_CLASS}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-      <span className="flex min-w-0 gap-1.5"><span className={failed ? "shrink-0 text-error" : "shrink-0 text-muted-foreground"}>•</span><span className="min-w-0 whitespace-pre-wrap break-words"><span className="font-semibold">{t("sessions.detail.activity_ran")}</span> {expanded ? activity.command : buildCollapsedPreview(activity.command, 1)}</span></span>
+      <span className="flex min-w-0 gap-1.5"><span className={failed ? "shrink-0 text-error" : "shrink-0 text-muted-foreground"}>•</span><span className="min-w-0 whitespace-pre-wrap break-words"><span className="font-semibold">{t(activity.status === "running" ? "sessions.detail.activity_running" : "sessions.detail.activity_ran")}</span> {expanded ? activity.command : buildCollapsedPreview(activity.command, 1)}</span></span>
       <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
     </button>
     {activity.output ? <ExecOutputMetadata output={activity.output} /> : null}
@@ -823,7 +823,7 @@ function BackgroundTerminalItem({ input, output, tokenUsage, rawJsonl }: { input
 function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: ToolActivity; item: Extract<ReplayItem, { kind: "toolCall" }>; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
+  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
   const argumentsTitle = execArguments?.kind === "patch"
     ? t("sessions.detail.patch_input")
     : t(execArguments ? "sessions.detail.command" : "sessions.detail.arguments");
@@ -850,11 +850,12 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
       <div className="space-y-1">
         {nestedActivities.map((nestedActivity, index) => (
           <NestedActivityItem
-            key={`${nestedActivity.kind}-${index}`}
+            key={nestedActivity.kind === "command" && nestedActivity.callId ? nestedActivity.callId : `${nestedActivity.kind}-${index}`}
             activity={nestedActivity}
           />
         ))}
       </div>
+      {retainedArguments ? <ToolTextBlock title={argumentsTitle} text={retainedArguments} /> : null}
       {unpairedOutputs.map((output, index) => <ExecResultItem key={index} output={output} index={index} />)}
       {unparsedOutputText || stderrText ? <div className="mt-2">
         <button

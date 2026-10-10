@@ -505,6 +505,10 @@ pub struct SessionReplayToolCall {
     pub completed_at: Option<String>,
     pub duration_ms: Option<i64>,
     pub is_error: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_executions: Vec<SessionReplayToolCall>,
+    #[serde(default)]
+    pub native_command: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

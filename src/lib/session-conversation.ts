@@ -40,7 +40,8 @@ function timelineEntries(items: ReplayItem[], previousTotalTokens: { value?: num
         deltaTokens: previousTotalTokens.value === undefined ? undefined : item.totalTokens - previousTotalTokens.value,
       };
       previousTotalTokens.value = item.totalTokens;
-      const previousEntry = entries.findLast((entry) => isVisibleTimelineItem(entry.item));
+      const previousEntry = entries.findLast((entry) => isVisibleTimelineItem(entry.item)
+        && !(entry.item.kind === "toolCall" && entry.item.nativeCommand));
       if (previousEntry) {
         previousEntry.tokenUsage = tokenUsage;
         continue;
@@ -305,7 +306,7 @@ export function parseToolContentBlocks(value: string | null): ToolContentBlocks 
 }
 
 export type NestedActivity =
-  | { kind: "command"; command: string; workdir: string | null; output: ExecOutput | null }
+  | { kind: "command"; command: string; workdir: string | null; output: ExecOutput | null; callId?: string | null; status?: string | null }
   | { kind: "terminal"; input: string; sessionId: string | number; output: ExecOutput | null }
   | { kind: "patch"; patch: string }
   | { kind: "image"; path: string; imageUrl: string | null };
@@ -682,11 +683,49 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
   const execOutput = isExec ? parseExecOutput(item.output) ?? parseExecOutput(item.output ? cleanExecOutput(item.output) : null) : null;
   const contentBlocks = parseToolContentBlocks(item.output);
   const nestedProjection = isExec ? parseNestedActivities(item.arguments, item.output) : null;
-  const nestedActivities = nestedProjection?.activities ?? null;
-  const fallbackOutput = isExec && !nestedProjection && !execArguments && !webSearchQueries
+  let nestedActivities = nestedProjection?.activities ?? null;
+  const fallbackOutput = isExec && !nestedProjection && (!execArguments || item.commandExecutions?.length) && !webSearchQueries
     ? execResultsFromContent(contentBlocks, item.output) : null;
-  const unpairedOutputs = nestedProjection?.unpairedOutputs ?? fallbackOutput?.outputs.map(({ result }) => result) ?? [];
-  const unparsedOutputText = nestedProjection?.unparsedOutputText ?? fallbackOutput?.unparsedOutputText ?? null;
+  let unpairedOutputs = nestedProjection?.unpairedOutputs ?? fallbackOutput?.outputs.map(({ result }) => result) ?? [];
+  let unparsedOutputText = nestedProjection?.unparsedOutputText ?? fallbackOutput?.unparsedOutputText ?? null;
+  const executions = item.commandExecutions ?? [];
+  let retainedArguments: string | null = null;
+  if (executions.length) {
+    const native = executions.flatMap((execution): NestedActivity[] => {
+      const args = parseJsonObject(execution.arguments);
+      if (typeof args?.cmd !== "string") return [];
+      return [{ kind: "command", command: args.cmd, workdir: typeof args.workdir === "string" ? args.workdir : null,
+        output: parseExecOutput(execution.output), callId: execution.callId, status: execution.status }];
+    });
+    const remaining = [...native];
+    let covered = 0;
+    const projected = nestedActivities ?? (execArguments?.kind === "command"
+      ? [{ kind: "command" as const, command: execArguments.command, workdir: execArguments.workdir, output: execOutput }] : []);
+    const replacements = new Map<number, NestedActivity>();
+    // Reserve explicit working directories before matching calls that use the default cwd.
+    const commands = projected.map((activity, index) => ({ activity, index }))
+      .filter((entry): entry is { activity: Extract<NestedActivity, { kind: "command" }>; index: number } => entry.activity.kind === "command")
+      .toSorted((a, b) => Number(Boolean(b.activity.workdir)) - Number(Boolean(a.activity.workdir)));
+    for (const { activity, index: activityIndex } of commands) {
+      const index = remaining.findIndex((candidate) => candidate.kind === "command" && candidate.command === activity.command
+        && (!activity.workdir || candidate.workdir === activity.workdir));
+      if (index < 0) continue;
+      covered += 1;
+      replacements.set(activityIndex, remaining.splice(index, 1)[0]);
+    }
+    nestedActivities = projected.map((activity, index) => replacements.get(index) ?? activity).concat(remaining);
+    // A complete set of structured command records supersedes printed process results.
+    // Mixed or partially recorded batches retain their other responses.
+    const complete = projected.length > 0 && covered === projected.length && remaining.length === 0;
+    unpairedOutputs = unpairedOutputs.filter((output) => !complete && !native.some((activity) => activity.kind === "command"
+      && activity.output && ((output.sessionId !== null && String(output.sessionId) === String(activity.output.sessionId))
+        || (output.stdout !== null && output.stdout === activity.output.stdout && output.stderr === activity.output.stderr))));
+    if (native.some((activity) => activity.kind === "command" && activity.output?.stdout
+      && cleanExecOutput(activity.output.stdout) === unparsedOutputText)) unparsedOutputText = null;
+    if (!projected.length && script?.calls.some((call) => !["exec_command", "write_stdin"].includes(call.name))) {
+      retainedArguments = item.arguments;
+    }
+  }
   const argumentsText = execArguments?.command ?? (parsedArguments ? null : item.arguments);
   const displayToolName = execArguments?.kind === "patch"
     ? "apply_patch"
@@ -698,7 +737,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     : isExec && isEmptyExecOutput(rawOutputText) ? null : rawOutputText;
   const stderrText = execOutput?.stderr ?? item.stderr;
 
-  return { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
+  return { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
 }
 
 export type ToolActivity = ReturnType<typeof buildToolActivity>;

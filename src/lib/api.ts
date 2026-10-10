@@ -453,6 +453,8 @@ export type SessionReplayDetail = {
       completedAt: string | null;
       durationMs: number | null;
       isError: boolean;
+      commandExecutions?: SessionReplayDetail["turns"][number]["toolCalls"];
+      nativeCommand?: boolean;
     }>;
     patchResults: Array<{
       callId: string | null;

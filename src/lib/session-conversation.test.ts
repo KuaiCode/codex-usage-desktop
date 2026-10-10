@@ -14,6 +14,91 @@ function usage(totalTokens: number): ReplayItem {
 }
 
 describe("conversation projection", () => {
+  it("does not assign model token usage to an independent native command", () => {
+    const blocks = buildConversation(replayTurn([
+      { kind: "message", role: "assistant", source: "agent_message", timestamp: null, text: "Checking the command" },
+      command("native-only", { nativeCommand: true, isError: true }), usage(1300),
+    ]));
+    expect(blocks).toHaveLength(2);
+    if (blocks[0].kind !== "item" || blocks[1].kind !== "item") throw new Error("Expected items");
+    expect(blocks[0].entry.tokenUsage?.totalTokens).toBe(1300);
+    expect(blocks[1].entry.tokenUsage).toBeUndefined();
+  });
+
+  it("retains auxiliary logs when a single command has native output", () => {
+    const native = command("first", { callId: "exec-first", output: '{"output":"full response","exit_code":0}' });
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.exec_command({cmd:"first"})); text("auxiliary log");',
+      commandExecutions: [native as SessionReplayDetail["turns"][number]["toolCalls"][number]],
+      output: JSON.stringify([
+        { type: "input_text", text: '{"output":"printed preview","exit_code":0}' },
+        { type: "input_text", text: "auxiliary log" },
+      ]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected item");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([{ command: "first", output: { stdout: "full response" } }]);
+    expect(block.entry.activity?.unparsedOutputText).toBe("auxiliary log");
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+  });
+
+  it("uses structured command identities instead of parallel print order and retains unrelated output", () => {
+    const execution = (cmd: string, output: string, code: number, sessionId: string) => command(cmd, {
+      callId: `exec-${cmd}`, output: JSON.stringify({ output, exit_code: code, session_id: sessionId }),
+      status: code ? "failed" : "completed", isError: code !== 0,
+    }) as SessionReplayDetail["turns"][number]["toolCalls"][number];
+    const tool = command("", {
+      name: "exec", arguments: 'await Promise.allSettled([tools.exec_command({cmd:"first"}),tools.exec_command({cmd:"second"})].map(async p=>text(await p)));',
+      output: JSON.stringify([
+        { type: "input_text", text: JSON.stringify({ exit_code: 2, output: "second printed preview" }) },
+        { type: "input_text", text: JSON.stringify({ exit_code: 0, output: "first printed preview" }) },
+        { type: "input_text", text: "retained extra log" },
+      ]),
+      commandExecutions: [execution("second", "second full output", 2, "42"), execution("first", "first full output", 0, "41")],
+    });
+    const block = buildConversation(replayTurn([tool, usage(1300)]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { command: "first", callId: "exec-first", output: { stdout: "first full output", sessionId: "41" } },
+      { command: "second", callId: "exec-second", output: { stdout: "second full output", exitCode: 2 } },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+    expect(block.entry.activity?.unparsedOutputText).toBe("retained extra log");
+    expect(block.entry.tokenUsage?.totalTokens).toBe(1300);
+  });
+
+  it("retains missing commands and unassociated responses in a partially recorded batch", () => {
+    const native = command("first", { callId: "exec-first", output: '{"output":"first response","session_id":"42","exit_code":0}' });
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'await Promise.allSettled([tools.exec_command({cmd:"first"}),tools.exec_command({cmd:"second"})].map(async p=>text(await p)));',
+      commandExecutions: [native as SessionReplayDetail["turns"][number]["toolCalls"][number]],
+      output: JSON.stringify([
+        { type: "input_text", text: '{"session_id":42,"output":"first preview"}' },
+        { type: "input_text", text: '{"output":"unknown response","exit_code":1}' },
+      ]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { command: "first", callId: "exec-first", output: { stdout: "first response" } },
+      { command: "second", output: null },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs.map((output) => output.stdout)).toEqual(["unknown response"]);
+  });
+
+  it("keeps identical commands in different working directories separate", () => {
+    const native = (workdir: string, output: string) => command("same", {
+      callId: `exec-${workdir}`, arguments: JSON.stringify({ cmd: "same", workdir }), output: JSON.stringify({ output, exit_code: 0 }),
+    }) as SessionReplayDetail["turns"][number]["toolCalls"][number];
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'await Promise.allSettled([tools.exec_command({cmd:"same"}),tools.exec_command({cmd:"same",workdir:"/other"})]);',
+      commandExecutions: [native("/other", "other response"), native("/default", "default response")],
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected item");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { command: "same", workdir: "/default", output: { stdout: "default response" } },
+      { command: "same", workdir: "/other", output: { stdout: "other response" } },
+    ]);
+  });
+
   it("retains all results of mapped commands and terminal polls without borrowing a poll's arguments", () => {
     const [call, response] = mixedOrchestration;
     const block = buildConversation(replayTurn([command("", {
