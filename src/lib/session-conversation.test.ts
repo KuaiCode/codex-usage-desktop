@@ -91,6 +91,47 @@ describe("conversation projection", () => {
     expect(classifyExploration("sed -i 's/a/b/' src/a.rs")).toBeNull();
   });
 
+  it("keeps indexed responses aligned when a batch response is truncated", () => {
+    const output = JSON.stringify([
+      { type: "input_text", text: "Script completed\nOutput:\n" },
+      { type: "input_text", text: 'Warning: truncated output\n{"i":0,"status":"fulfilled","value":{"exit_code":0,"output":"first response"}}\n{"i":1,"status":"fulfilled","value":{"output":"retained fragment…\n{"i":2,"status":"fulfilled","value":{"exit_code":2,"output":"third response"}}' },
+    ]);
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.exec_command({cmd:"first"})); text(await tools.exec_command({cmd:"second"})); text(await tools.exec_command({cmd:"third"}));', output,
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    const activities = block.entry.activity?.nestedActivities;
+    expect(activities?.[0]).toMatchObject({ command: "first", output: { stdout: "first response" } });
+    expect(activities?.[1]).toMatchObject({ command: "second", output: null });
+    expect(activities?.[2]).toMatchObject({ command: "third", output: { stdout: "third response", exitCode: 2 } });
+    expect(block.entry.activity?.unparsedOutputText).toContain("retained fragment");
+  });
+
+  it("does not attach polling or rejected responses to the next command", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.write_stdin({session_id:42})); text(await tools.exec_command({cmd:"first"})); text(await tools.exec_command({cmd:"second"}));',
+      output: JSON.stringify([
+        { type: "input_text", text: JSON.stringify({ exit_code: 0, output: "poll response" }) },
+        { type: "input_text", text: JSON.stringify({ status: "rejected", reason: "command unavailable" }) },
+        { type: "input_text", text: JSON.stringify({ session_id: 43, output: "second response" }) },
+      ]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { command: "first", output: { stderr: "command unavailable", exitCode: null } },
+      { command: "second", output: { stdout: "second response", sessionId: 43 } },
+    ]);
+  });
+
+  it("retains plain batch output for expansion when it cannot be paired", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.exec_command({cmd:"first"})); text(await tools.exec_command({cmd:"second"}));',
+      output: "first response\nsecond response\nProcess exited with code 0",
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.unparsedOutputText).toContain("second response");
+  });
+
   it("keeps the head and tail with an exact omitted line count", () => {
     expect(summarizeOutput("1\n2\n3\n4\n5\n6\n7\n8")).toEqual({ head: ["1", "2", "3"], tail: ["7", "8"], omitted: 3 });
     expect(summarizeOutput("1\n2")).toEqual({ head: ["1", "2"], tail: [], omitted: 0 });

@@ -374,24 +374,44 @@ function resolveStringVariable(value: string, callStart: number) {
   }
 }
 
-function execResultsFromContent(content: ToolContentBlocks | null) {
-  if (!content) return [];
-  return content.texts.flatMap((text) => {
-    const direct = parseExecOutput(text);
-    if (direct) return [direct];
-    return text.split("\n").flatMap((line) => {
-      const value = parseJsonObject(line.trim());
+function execResultsFromContent(content: ToolContentBlocks | null, output: string | null) {
+  const results = new Map<number, ExecOutput | null>();
+  const unparsed: string[] = [];
+  let nextIndex = 0;
+  for (const text of content?.texts ?? (output ? [output] : [])) {
+    const candidates = parseJsonObject(text) ? [text] : text.split("\n");
+    for (const candidate of candidates) {
+      const value = parseJsonObject(candidate.trim());
       const result = value?.status === "fulfilled" ? value.value : value;
-      const parsed = result && typeof result === "object" && !Array.isArray(result)
-        ? parseExecOutput(JSON.stringify(result))
-        : null;
-      return parsed ? [parsed] : [];
-    });
-  });
+      const parsed = value?.status === "rejected"
+        ? { stdout: null, stderr: formatToolArgumentValue(value.reason ?? "Rejected"), exitCode: null, wallTimeSeconds: null, sessionId: null }
+        : result && typeof result === "object" && !Array.isArray(result)
+          ? parseExecOutput(JSON.stringify(result))
+          : null;
+      const index = typeof value?.i === "number" && Number.isInteger(value.i) && value.i >= 0
+        ? value.i : null;
+      if (parsed) {
+        const resultIndex = index ?? nextIndex;
+        results.set(resultIndex, parsed);
+        nextIndex = resultIndex + 1;
+      } else {
+        const cleaned = cleanExecOutput(candidate);
+        if ((cleaned && cleaned !== "{}") || candidate.trim() === "") unparsed.push(candidate);
+        // Retain the slot of a truncated result so later responses cannot shift.
+        if (/^\s*\{.*"(?:output|stdout|value)"\s*:/.test(candidate)) {
+          const truncatedIndex = candidate.match(/^\s*\{\s*"i"\s*:\s*(\d+)/)?.[1];
+          const resultIndex = truncatedIndex ? Number(truncatedIndex) : nextIndex;
+          results.set(resultIndex, null);
+          nextIndex = resultIndex + 1;
+        }
+      }
+    }
+  }
+  return { results, unparsedOutputText: cleanExecOutput(unparsed.join("\n")) || null };
 }
 
 function nestedToolCalls(value: string) {
-  const calls: Array<{ name: "exec_command" | "apply_patch" | "view_image"; index: number; argumentStart: number }> = [];
+  const calls: Array<{ name: "exec_command" | "write_stdin" | "apply_patch" | "view_image"; index: number; argumentStart: number }> = [];
   let quote: "\"" | "'" | "`" | null = null;
   let escaped = false;
   for (let index = 0; index < value.length; index += 1) {
@@ -406,29 +426,34 @@ function nestedToolCalls(value: string) {
       quote = character;
       continue;
     }
-    const match = value.slice(index).match(/^tools\.(exec_command|apply_patch|view_image)\s*\(/);
+    const match = value.slice(index).match(/^tools\.(exec_command|write_stdin|apply_patch|view_image)\s*\(/);
     if (!match) continue;
-    calls.push({ name: match[1] as "exec_command" | "apply_patch" | "view_image", index, argumentStart: index + match[0].length });
+    calls.push({ name: match[1] as "exec_command" | "write_stdin" | "apply_patch" | "view_image", index, argumentStart: index + match[0].length });
     index += match[0].length - 1;
   }
   return calls;
 }
 
-function parseNestedActivities(value: string | null, output: string | null): NestedActivity[] | null {
+function parseNestedActivities(value: string | null, output: string | null) {
   if (!value) return null;
+  const calls = nestedToolCalls(value);
+  if (!calls.some((call) => call.name !== "write_stdin")
+    || (calls.length === 1 && calls[0].name === "exec_command")) return null;
   const content = parseToolContentBlocks(output);
-  const execResults = execResultsFromContent(content);
+  const { results: execResults, unparsedOutputText } = execResultsFromContent(content, output);
   let execIndex = 0;
   let imageIndex = 0;
   const activities: NestedActivity[] = [];
-  for (const call of nestedToolCalls(value)) {
+  for (const call of calls) {
     const { name, index: callIndex, argumentStart } = call;
     if (name === "exec_command") {
       const parsed = parseNestedToolCall(value.slice(callIndex), name);
       const command = typeof parsed?.cmd === "string" ? parsed.cmd : typeof parsed?.command === "string" ? parsed.command : null;
       if (!command) continue;
       const workdir = typeof parsed?.workdir === "string" ? parsed.workdir : typeof parsed?.cwd === "string" ? parsed.cwd : null;
-      activities.push({ kind: "command", command, workdir, output: execResults[execIndex++] ?? null });
+      activities.push({ kind: "command", command, workdir, output: execResults.get(execIndex++) ?? null });
+    } else if (name === "write_stdin") {
+      execIndex += 1;
     } else if (name === "apply_patch") {
       const patch = parseStringArgument(value, argumentStart) ?? resolveStringVariable(value, argumentStart);
       if (patch) activities.push({ kind: "patch", patch });
@@ -440,7 +465,8 @@ function parseNestedActivities(value: string | null, output: string | null): Nes
     }
   }
 
-  return activities.length > 1 || activities.some((activity) => activity.kind !== "command") ? activities : null;
+  return activities.length > 0 && (calls.length > 1 || activities.some((activity) => activity.kind !== "command"))
+    ? { activities, unparsedOutputText } : null;
 }
 
 type BatchExecResult = {
@@ -651,7 +677,9 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     : [];
   const execOutput = isExec ? parseExecOutput(item.output) ?? parseExecOutput(item.output ? cleanExecOutput(item.output) : null) : null;
   const contentBlocks = parseToolContentBlocks(item.output);
-  const nestedActivities = isExec ? parseNestedActivities(item.arguments, item.output) : null;
+  const nestedProjection = isExec ? parseNestedActivities(item.arguments, item.output) : null;
+  const nestedActivities = nestedProjection?.activities ?? null;
+  const unparsedOutputText = nestedProjection?.unparsedOutputText ?? null;
   const argumentsText = execArguments?.command ?? (parsedArguments ? null : item.arguments);
   const displayToolName = execArguments?.kind === "patch"
     ? "apply_patch"
@@ -662,7 +690,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
   const outputText = isExec && isEmptyExecOutput(rawOutputText) ? null : rawOutputText;
   const stderrText = execOutput?.stderr ?? item.stderr;
 
-  return { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, batchActivities, nestedActivities, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
+  return { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, batchActivities, nestedActivities, unparsedOutputText, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
 }
 
 export type ToolActivity = ReturnType<typeof buildToolActivity>;

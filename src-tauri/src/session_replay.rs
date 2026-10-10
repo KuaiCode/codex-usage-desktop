@@ -727,8 +727,9 @@ impl ReplayParseState {
             .as_deref()
             .map(|output| parse_process_output(output, authoritative_exit_code))
             .unwrap_or_default();
-        let is_batched_process_activity = output_state.process_result_count > 1
-            && is_exec_command_call(&name, arguments.as_deref());
+        let is_batched_process_activity = is_exec_command_call(&name, arguments.as_deref())
+            && (output_state.process_result_count > 1
+                || arguments.as_deref().is_some_and(is_orchestration_batch));
         let is_process_activity = !is_batched_process_activity
             && (continuation.is_some()
                 || is_exec_command_call(&name, arguments.as_deref())
@@ -803,6 +804,7 @@ impl ReplayParseState {
                 tool.is_error = is_error;
                 let registered_cell = output_state
                     .cell_id
+                    .filter(|_| !is_batched_process_activity)
                     .zip(tool.call_id.clone())
                     .map(|(cell_id, call_id)| (cell_id, (turn_id.clone(), call_id)));
                 if let Some(SessionReplayItem::ToolCall { tool: item_tool, raw_jsonl_line_numbers }) = turn
@@ -1456,6 +1458,9 @@ struct ProcessContinuation {
 
 fn extract_process_continuation(tool_name: &str, arguments: &str) -> Option<ProcessContinuation> {
     let base_name = tool_name.rsplit('.').next().unwrap_or(tool_name);
+    if base_name == "exec" && is_orchestration_batch(arguments) {
+        return None;
+    }
     let (kind, called_name, id_key) =
         if base_name == "write_stdin" || arguments.contains("tools.write_stdin") {
             (
@@ -1502,6 +1507,65 @@ fn is_exec_command_call(tool_name: &str, arguments: Option<&str>) -> bool {
     let base_name = tool_name.rsplit('.').next().unwrap_or(tool_name);
     base_name == "exec_command"
         || arguments.is_some_and(|arguments| arguments.contains("tools.exec_command"))
+}
+
+// A partial response can contain only one complete result from a multi-tool call.
+// Count calls in the script rather than treating that result as the whole command.
+fn is_orchestration_batch(arguments: &str) -> bool {
+    let bytes = arguments.as_bytes();
+    let mut index = 0;
+    let mut calls = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' | b'\'' | b'`' => {
+                let quote = bytes[index];
+                index += 1;
+                while index < bytes.len() {
+                    if bytes[index] == b'\\' {
+                        index += 2;
+                    } else if bytes[index] == quote {
+                        index += 1;
+                        break;
+                    } else {
+                        index += 1;
+                    }
+                }
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'/') => {
+                while index < bytes.len() && bytes[index] != b'\n' {
+                    index += 1;
+                }
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                index += 2;
+                while index + 1 < bytes.len() && &bytes[index..index + 2] != b"*/" {
+                    index += 1;
+                }
+                index += 2;
+            }
+            _ => {
+                if bytes[index..].starts_with(b"tools.") {
+                    let mut end = index + 6;
+                    while end < bytes.len()
+                        && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                    {
+                        end += 1;
+                    }
+                    while end < bytes.len() && bytes[end].is_ascii_whitespace() {
+                        end += 1;
+                    }
+                    if bytes.get(end) == Some(&b'(') {
+                        calls += 1;
+                        if calls > 1 {
+                            return true;
+                        }
+                    }
+                }
+                index += 1;
+            }
+        }
+    }
+    false
 }
 
 fn extract_nested_tool_arguments(arguments: &str, tool_name: &str) -> Option<Value> {
@@ -1808,6 +1872,49 @@ mod tests {
             .contains(r#"\"exit_code\":1"#));
         assert!(!tool.is_error);
         assert_eq!(detail.raw_jsonl, raw);
+    }
+
+    #[test]
+    fn preserves_incomplete_and_mixed_orchestration_responses() {
+        for input in [
+            "text(await tools.exec_command({cmd:\"first\"})); text(await tools.exec_command({cmd:\"second\"}));",
+            "text(await tools.exec_command({cmd:\"first\"})); text(await tools.apply_patch(\"patch\"));",
+        ] {
+            let output = serde_json::json!([
+                {"type":"input_text","text":"Script completed\nWall time 0.2 seconds\nOutput:\n"},
+                {"type":"input_text","text":r#"{"i":0,"status":"fulfilled","value":{"session_id":42,"output":"first response"}}"#},
+                {"type":"input_text","text":r#"Warning: truncated output
+{"i":1,"status":"fulfilled","value":{"output":"retained fragment"#},
+            ]);
+            let raw = [
+                turn_context("2026-10-09T00:00:00.000Z", "turn-1", "gpt-6-astra", "/repo/app"),
+                response_item("2026-10-09T00:00:01.000Z", serde_json::json!({
+                    "type":"custom_tool_call","call_id":"batch","name":"exec","input":input,
+                })),
+                response_item("2026-10-09T00:00:02.000Z", serde_json::json!({
+                    "type":"custom_tool_call_output","call_id":"batch","output":output,
+                })),
+                response_item("2026-10-09T00:00:03.000Z", serde_json::json!({
+                    "type":"custom_tool_call","call_id":"poll","name":"exec",
+                    "input":"text(await tools.write_stdin({session_id:42,chars:\"\"}));",
+                })),
+                response_item("2026-10-09T00:00:04.000Z", serde_json::json!({
+                    "type":"custom_tool_call_output","call_id":"poll",
+                    "output":[{"type":"input_text","text":r#"{"exit_code":0,"output":"finished"}"#}],
+                })),
+            ].join("\n");
+            let detail = parse_session_detail(record("/tmp/session.jsonl"), raw);
+            let tool = &detail.turns[0].tool_calls[0];
+            assert_eq!(detail.turns[0].tool_calls.len(), 2);
+            assert_eq!(serde_json::from_str::<Value>(tool.output.as_deref().unwrap()).unwrap(), output);
+        }
+    }
+
+    #[test]
+    fn does_not_merge_mixed_orchestration_into_a_polled_command() {
+        assert!(extract_process_continuation("exec", "text(await tools.write_stdin({session_id:42})); text(await tools.exec_command({cmd:\"next\"}));").is_none());
+        assert!(extract_process_continuation("exec", "text(await tools.write_stdin({session_id:42})); text(await tools.write_stdin({session_id:43}));").is_none());
+        assert!(extract_process_continuation("exec", "// tools.exec_command({})\ntext(await tools.write_stdin({session_id:42,chars:\"tools.exec_command({})\"}));").is_some());
     }
 
     #[test]

@@ -757,22 +757,33 @@ function WebSearchItem({
   );
 }
 
-function BackgroundTerminalItem({ input, tokenUsage, rawJsonl }: { input: string; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
+function BackgroundTerminalItem({ input, output, tokenUsage, rawJsonl }: { input: string; output: string | null; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
+  const [isExpanded, setIsExpanded] = useState(false);
   const waitedOnly = input.length === 0;
 
   return (
     <div className={`rounded-lg border p-3 font-mono text-xs leading-relaxed ${ITEM_TONES.tool}`}>
-      <div className="flex items-start justify-between gap-3 text-foreground">
+      <button
+        type="button"
+        className={`flex w-full items-start justify-between gap-3 text-left text-foreground ${DISCLOSURE_BUTTON_CLASS}`}
+        aria-expanded={isExpanded}
+        disabled={!output}
+        onClick={() => setIsExpanded((value) => !value)}
+      >
         <span className="flex min-w-0 gap-1.5">
           <span className="shrink-0 text-muted-foreground">{waitedOnly ? "•" : "↳"}</span>
           <span className="font-semibold">
             {t(waitedOnly ? "sessions.detail.waited_for_background_terminal" : "sessions.detail.interacted_with_background_terminal")}
           </span>
         </span>
-        {tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}
-      </div>
+        <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+          {tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}
+          {output ? isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" /> : null}
+        </span>
+      </button>
       {!waitedOnly ? <pre className="mt-1 whitespace-pre-wrap break-words border-l border-border/60 pl-4 text-muted-foreground">{`└ ${input}`}</pre> : null}
+      {isExpanded && output ? <ActivityOutput text={output} expanded tone="text-muted-foreground" /> : null}
       <RawJsonlDisclosure rawJsonl={rawJsonl} />
     </div>
   );
@@ -781,7 +792,7 @@ function BackgroundTerminalItem({ input, tokenUsage, rawJsonl }: { input: string
 function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: ToolActivity; item: Extract<ReplayItem, { kind: "toolCall" }>; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, batchActivities, nestedActivities, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
+  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, batchActivities, nestedActivities, unparsedOutputText, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
   const argumentsTitle = execArguments?.kind === "patch"
     ? t("sessions.detail.patch_input")
     : t(execArguments ? "sessions.detail.command" : "sessions.detail.arguments");
@@ -795,7 +806,8 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
   }
 
   if (backgroundTerminalInput !== null) {
-    return <BackgroundTerminalItem input={backgroundTerminalInput} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
+    const response = [contentBlocks?.texts.join("\n") ?? outputText, stderrText].filter(Boolean).join("\n");
+    return <BackgroundTerminalItem input={backgroundTerminalInput} output={cleanExecOutput(response) || null} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
   }
 
   if (nestedActivities) {
@@ -809,6 +821,18 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
           />
         ))}
       </div>
+      {unparsedOutputText ? <div className="mt-2">
+        <button
+          type="button"
+          className={`flex w-full items-center justify-between gap-3 text-left text-muted-foreground ${DISCLOSURE_BUTTON_CLASS}`}
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((value) => !value)}
+        >
+          <span>{t("sessions.detail.output")}</span>
+          {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </button>
+        <ActivityOutput text={unparsedOutputText} expanded={isExpanded} tone="text-muted-foreground" />
+      </div> : null}
       <RawJsonlDisclosure rawJsonl={rawJsonl} />
     </div>;
   }

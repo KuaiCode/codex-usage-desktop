@@ -198,4 +198,39 @@ it("renders background terminal polling like Codex CLI", async () => {
   expect(screen.queryByText(/Background task output/)).not.toBeInTheDocument();
   expect(screen.queryByText(/session_id/)).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /exec · completed/ })).not.toBeInTheDocument();
+  const poll = screen.getByRole("button", { name: /Waited for background terminal/ });
+  expect(poll).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(poll);
+  expect(poll).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText(/Background task output/)).toBeInTheDocument();
+});
+
+it("expands unpaired command responses without assigning them to another command", async () => {
+  await i18n.changeLanguage("en");
+  const fragment = Array.from({ length: 8 }, (_, index) => `retained fragment ${index + 1}`).join("\n");
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "1", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: "partial", name: "exec", status: "completed",
+      arguments: 'text(await tools.exec_command({cmd:"first"})); text(await tools.exec_command({cmd:"second"}));',
+      output: JSON.stringify([
+        { type: "input_text", text: JSON.stringify({ i: 0, status: "fulfilled", value: { output: "first response", exit_code: 0 } }) },
+        { type: "input_text", text: fragment },
+      ]),
+      stderr: null, startedAt: null, completedAt: null, durationMs: 100, isError: false,
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={[]} />);
+  expect(screen.getByText(/first response/)).toBeInTheDocument();
+  const second = screen.getByRole("button", { name: /Ran second/ });
+  await userEvent.click(second);
+  expect(second.parentElement).not.toHaveTextContent("first response");
+  const output = screen.getByRole("button", { name: "Output" });
+  expect(output).toHaveAttribute("aria-expanded", "false");
+  expect(output.parentElement).toHaveTextContent("retained fragment 1");
+  expect(output.parentElement).not.toHaveTextContent("retained fragment 4");
+  await userEvent.click(output);
+  expect(output).toHaveAttribute("aria-expanded", "true");
+  expect(output.parentElement?.querySelector("pre")?.textContent).toContain(fragment);
 });
