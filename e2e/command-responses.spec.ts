@@ -2,9 +2,75 @@ import { $, browser, expect } from "@wdio/globals";
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { SessionReplayDetail } from "../src/lib/api";
+import mixedOrchestration from "./fixtures/mixed-orchestration.json";
 
 describe("session command responses", () => {
   const run = process.env.CODEX_USAGE_ARCHIVE_E2E === "1" ? it : it.skip;
+
+  run("decodes mapped commands and polls from the reported session through native replay", async () => {
+    const sessions = join(process.env.CODEX_HOME!, "sessions", "2026", "10", "10");
+    mkdirSync(sessions, { recursive: true });
+    const id = "01a12575-ca0f-7e81-b256-7fa9f45be72e";
+    const name = `rollout-2026-10-10T18-57-18-${id}`;
+    const path = join(sessions, `${name}.jsonl`);
+    writeFileSync(path, [
+      { timestamp: mixedOrchestration[0].timestamp, type: "session_meta", payload: { id, cwd: "/mixed-orchestration-test" } },
+      { timestamp: mixedOrchestration[0].timestamp, type: "turn_context", payload: { turn_id: "mixed-turn", model: "gpt-6" } },
+      { timestamp: mixedOrchestration[0].timestamp, type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "Inspect mapped command results" }] } },
+      ...mixedOrchestration,
+    ].map((record) => JSON.stringify(record)).join("\n"));
+    const previousLanguage = await browser.execute(() => localStorage.getItem("language"));
+    try {
+      await browser.execute(() => localStorage.setItem("language", "en"));
+      const detail = await browser.execute(async (path) => {
+        const runtime = (window as unknown as { __TAURI_INTERNALS__: { invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T> } }).__TAURI_INTERNALS__;
+        await runtime.invoke("scan_usage");
+        return runtime.invoke<SessionReplayDetail>("fetch_session_detail", { path });
+      }, path);
+      const tool = detail.turns.flatMap((turn) => turn.toolCalls)[0];
+      expect(tool.status).toBe("completed");
+      expect(JSON.parse(tool.output!)).toEqual(mixedOrchestration[1].payload.output);
+      await browser.refresh();
+      const sessionsTab = $('button[role="tab"]=Sessions');
+      await sessionsTab.waitForDisplayed({ timeout: 90_000 });
+      await sessionsTab.click();
+      const card = $(`[data-testid="session-card"]*=${name}`);
+      await card.waitForDisplayed({ timeout: 15_000 });
+      await card.click();
+      const dialog = $('[aria-labelledby="session-detail-title"]');
+      await dialog.waitForDisplayed();
+      const outer = dialog.$('button*=exec · completed');
+      await outer.waitForExist({ timeout: 15_000 });
+      expect(await dialog.$$('button*=Output #')).toHaveLength(5);
+      expect(await dialog.$$('button*=write_stdin · completed')).toHaveLength(0);
+      const first = dialog.$('button=Output #1');
+      await first.execute((element) => element.scrollIntoView({ block: "center" }));
+      await expect(first).toHaveAttribute("aria-expanded", "false");
+      expect(await first.$("..").getText()).not.toContain('"chunk_id"');
+      await first.click();
+      await expect(first).toHaveAttribute("aria-expanded", "true");
+      const result = JSON.parse(mixedOrchestration[1].payload.output![1].text);
+      await expect(first.$("..").$('pre')).toHaveText(expect.stringContaining(result.output.trim()));
+      const failed = dialog.$('button=Output #4');
+      await expect(failed.$("..")).toHaveText(expect.stringContaining("Exit code: 101"));
+      await expect(dialog.$('button=Output #5').$("..")).toHaveText(expect.stringContaining("Process session: 99948"));
+      await outer.execute((element) => element.scrollIntoView({ block: "center" }));
+      await outer.click();
+      await expect(outer.$("..").$('pre')).toHaveText(expect.stringContaining(mixedOrchestration[0].payload.input!.trim()));
+      expect(await outer.$("..").$$('[data-testid="token-metadata"]')).toHaveLength(1);
+      await outer.click();
+      await first.click();
+      await outer.execute((element) => element.scrollIntoView({ block: "start" }));
+      await browser.saveScreenshot("/tmp/codex-usage-mixed-replay.png");
+      await browser.keys("Escape");
+      await dialog.waitForExist({ reverse: true });
+    } finally {
+      await browser.execute((language) => {
+        if (language === null) localStorage.removeItem("language");
+        else localStorage.setItem("language", language);
+      }, previousLanguage);
+    }
+  }).timeout(180_000);
 
   run("preserves partial batch responses and expands all retained output through native replay", async () => {
     const sessions = join(process.env.CODEX_HOME!, "sessions", "2026", "10", "09");
@@ -46,6 +112,9 @@ describe("session command responses", () => {
       const sessionsTab = $('button[role="tab"]=Sessions');
       await sessionsTab.waitForDisplayed({ timeout: 90_000 });
       await sessionsTab.click();
+      const day = $('#date-group-2026-10-09 > button');
+      await day.waitForDisplayed({ timeout: 15_000 });
+      if (await day.getAttribute("aria-expanded") === "false") await day.click();
       const card = $(`[data-testid="session-card"]*=${name.replace(/\.jsonl$/, "")}`);
       await card.waitForDisplayed({ timeout: 15_000 });
       await card.click();

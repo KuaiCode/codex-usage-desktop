@@ -727,7 +727,7 @@ impl ReplayParseState {
             .as_deref()
             .map(|output| parse_process_output(output, authoritative_exit_code))
             .unwrap_or_default();
-        let is_batched_process_activity = is_exec_command_call(&name, arguments.as_deref())
+        let is_batched_process_activity = name.rsplit('.').next() == Some("exec")
             && (output_state.process_result_count > 1
                 || arguments.as_deref().is_some_and(is_orchestration_batch));
         let is_process_activity = !is_batched_process_activity
@@ -748,6 +748,17 @@ impl ReplayParseState {
             value.kind == ProcessContinuationKind::WriteStdin && !output_state.has_process_exit
         }) {
             Some("running".to_string())
+        } else if is_batched_process_activity {
+            // Child process state must not replace the outer script's state.
+            let text = output.as_deref().and_then(decode_tool_output_text);
+            let text = text.as_deref().or(output.as_deref()).unwrap_or("");
+            if text.starts_with("Script running with cell ID ") {
+                Some("running".to_string())
+            } else if text.starts_with("Script failed") {
+                Some("failed".to_string())
+            } else {
+                string_field(event, "status").or_else(|| Some("completed".to_string()))
+            }
         } else if output_state.is_running {
             Some("running".to_string())
         } else {
@@ -823,11 +834,9 @@ impl ReplayParseState {
             }
         }
 
-        if let Some(tool_index) = turn
-            .tool_calls
-            .iter()
-            .rposition(|tool| tool.completed_at.is_none() && tool.name == name)
-        {
+        if let Some(tool_index) = turn.tool_calls.iter().rposition(|tool| {
+            tool.call_id.is_none() && tool.completed_at.is_none() && tool.name == name
+        }) {
             let tool = &mut turn.tool_calls[tool_index];
             if tool.call_id.is_none() {
                 tool.call_id = call_id;
@@ -1397,7 +1406,10 @@ fn count_structured_process_results(output: &str) -> usize {
             } else {
                 value
             };
-            result.get("exit_code").and_then(Value::as_i64).is_some()
+            value.get("status").and_then(Value::as_str) == Some("rejected")
+                || ["exit_code", "session_id", "output", "stdout", "stderr"]
+                    .iter()
+                    .any(|key| result.get(key).is_some())
         })
         .count()
 }
@@ -1461,14 +1473,16 @@ fn extract_process_continuation(tool_name: &str, arguments: &str) -> Option<Proc
     if base_name == "exec" && is_orchestration_batch(arguments) {
         return None;
     }
+    let (calls, _) = scan_tool_script(arguments);
+    let nested_name = (base_name == "exec" && calls.len() == 1).then(|| calls[0].0);
     let (kind, called_name, id_key) =
-        if base_name == "write_stdin" || arguments.contains("tools.write_stdin") {
+        if base_name == "write_stdin" || nested_name == Some("write_stdin") {
             (
                 ProcessContinuationKind::WriteStdin,
                 "write_stdin",
                 "session_id",
             )
-        } else if base_name == "wait" || arguments.contains("tools.wait") {
+        } else if base_name == "wait" || nested_name == Some("wait") {
             (ProcessContinuationKind::Wait, "wait", "cell_id")
         } else {
             return None;
@@ -1506,19 +1520,34 @@ fn extract_process_continuation(tool_name: &str, arguments: &str) -> Option<Proc
 fn is_exec_command_call(tool_name: &str, arguments: Option<&str>) -> bool {
     let base_name = tool_name.rsplit('.').next().unwrap_or(tool_name);
     base_name == "exec_command"
-        || arguments.is_some_and(|arguments| arguments.contains("tools.exec_command"))
+        || (base_name == "exec"
+            && arguments.is_some_and(|arguments| {
+                scan_tool_script(arguments)
+                    .0
+                    .iter()
+                    .any(|(name, _)| *name == "exec_command")
+            }))
 }
 
 // A partial response can contain only one complete result from a multi-tool call.
 // Count calls in the script rather than treating that result as the whole command.
 fn is_orchestration_batch(arguments: &str) -> bool {
+    let (calls, dynamic) = scan_tool_script(arguments);
+    dynamic || calls.len() > 1
+}
+
+fn scan_tool_script(arguments: &str) -> (Vec<(&str, usize)>, bool) {
     let bytes = arguments.as_bytes();
     let mut index = 0;
-    let mut calls = 0;
+    let mut calls = Vec::new();
+    let mut dynamic = false;
     while index < bytes.len() {
         match bytes[index] {
             b'"' | b'\'' | b'`' => {
                 let quote = bytes[index];
+                if quote == b'`' {
+                    dynamic = true;
+                }
                 index += 1;
                 while index < bytes.len() {
                     if bytes[index] == b'\\' {
@@ -1544,37 +1573,93 @@ fn is_orchestration_batch(arguments: &str) -> bool {
                 index += 2;
             }
             _ => {
-                if bytes[index..].starts_with(b"tools.") {
+                if bytes[index] == b'/' {
+                    dynamic = true;
+                }
+                if bytes[index..].starts_with(b"=>")
+                    || bytes[index..].starts_with(b"&&")
+                    || bytes[index..].starts_with(b"||")
+                    || (bytes[index] == b'?' && bytes.get(index + 1) != Some(&b'.'))
+                    || bytes[index..].starts_with(b"Promise.all")
+                    || ["for", "while", "if", "switch", "function"]
+                        .iter()
+                        .any(|word| {
+                            bytes[index..].starts_with(word.as_bytes())
+                                && (index == 0 || !bytes[index - 1].is_ascii_alphanumeric())
+                                && bytes.get(index + word.len()).is_none_or(|next| {
+                                    !next.is_ascii_alphanumeric() && *next != b'_'
+                                })
+                        })
+                {
+                    dynamic = true;
+                }
+                if bytes[index..].starts_with(b"tools.")
+                    && (index == 0
+                        || (!bytes[index - 1].is_ascii_alphanumeric()
+                            && !matches!(bytes[index - 1], b'_' | b'$' | b'.')))
+                {
                     let mut end = index + 6;
                     while end < bytes.len()
                         && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
                     {
                         end += 1;
                     }
+                    let name_end = end;
                     while end < bytes.len() && bytes[end].is_ascii_whitespace() {
                         end += 1;
                     }
                     if bytes.get(end) == Some(&b'(') {
-                        calls += 1;
-                        if calls > 1 {
-                            return true;
-                        }
+                        calls.push((&arguments[index + 6..name_end], end + 1));
                     }
                 }
                 index += 1;
             }
         }
     }
-    false
+    (calls, dynamic)
+}
+
+fn tool_argument_text<'a>(arguments: &'a str, tool_name: &str) -> Option<&'a str> {
+    if serde_json::from_str::<Value>(arguments).is_ok_and(|value| value.is_object()) {
+        return Some(arguments);
+    }
+    let (calls, _) = scan_tool_script(arguments);
+    let (_, start) = calls.iter().find(|(name, _)| *name == tool_name)?;
+    let rest = &arguments[*start..];
+    let mut depth = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in rest.char_indices() {
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == delimiter {
+                quote = None;
+            }
+            continue;
+        }
+        match character {
+            '"' | '\'' | '`' => quote = Some(character),
+            '(' => depth += 1,
+            ')' if depth == 0 => return Some(&rest[..index]),
+            ')' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
 }
 
 fn extract_nested_tool_arguments(arguments: &str, tool_name: &str) -> Option<Value> {
     if let Ok(value) = serde_json::from_str::<Value>(arguments) {
         return value.is_object().then_some(value);
     }
-    let marker = format!("tools.{tool_name}(");
-    let rest = arguments.split(&marker).nth(1)?;
-    let start = rest.find('{')?;
+    let rest = tool_argument_text(arguments, tool_name)?.trim_start();
+    if !rest.starts_with('{') {
+        return None;
+    }
+    let start = 0;
     let bytes = rest.as_bytes();
     let mut depth = 0_i32;
     let mut in_string = false;
@@ -1606,17 +1691,61 @@ fn extract_nested_tool_arguments(arguments: &str, tool_name: &str) -> Option<Val
     None
 }
 
+fn tool_argument_property<'a>(arguments: &'a str, tool_name: &str, key: &str) -> Option<&'a str> {
+    let text = tool_argument_text(arguments, tool_name)?;
+    let mut depth = 0;
+    let mut quote = None;
+    let mut escaped = false;
+    let mut skip_until = 0;
+    for (index, character) in text.char_indices() {
+        if index < skip_until {
+            continue;
+        }
+        if let Some(delimiter) = quote {
+            if escaped {
+                escaped = false;
+            } else if character == '\\' {
+                escaped = true;
+            } else if character == delimiter {
+                quote = None;
+            }
+            continue;
+        }
+        if text[index..].starts_with("//") {
+            skip_until = text[index..]
+                .find('\n')
+                .map_or(text.len(), |end| index + end);
+            continue;
+        }
+        if text[index..].starts_with("/*") {
+            skip_until = text[index + 2..]
+                .find("*/")
+                .map_or(text.len(), |end| index + end + 4);
+            continue;
+        }
+        match character {
+            '"' | '\'' | '`' => quote = Some(character),
+            '{' => depth += 1,
+            '}' => depth -= 1,
+            _ if depth == 1
+                && text[index..].starts_with(key)
+                && (index == 0
+                    || !text.as_bytes()[index - 1].is_ascii_alphanumeric()
+                        && text.as_bytes()[index - 1] != b'_') =>
+            {
+                if let Some(value) = text[index + key.len()..].trim_start().strip_prefix(':') {
+                    return Some(value.trim_start());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 fn extract_argument_scalar(arguments: &str, tool_name: &str, key: &str) -> Option<String> {
-    let tool_arguments = arguments
-        .split(&format!("tools.{tool_name}"))
-        .nth(1)
-        .unwrap_or(arguments);
-    let marker = tool_arguments
-        .find(key)
-        .map(|index| &tool_arguments[index + key.len()..])?;
-    let value = marker.trim_start_matches(|character: char| {
-        character.is_whitespace() || matches!(character, ':' | '=' | '\\' | '"' | '\'')
-    });
+    let value = tool_argument_property(arguments, tool_name, key)?;
+    let value = value.trim_start_matches(['"', '\'']);
     let value = value
         .split(|character: char| {
             character.is_whitespace() || matches!(character, ',' | '}' | ')' | '\\' | '"' | '\'')
@@ -1627,16 +1756,7 @@ fn extract_argument_scalar(arguments: &str, tool_name: &str, key: &str) -> Optio
 }
 
 fn extract_argument_string(arguments: &str, tool_name: &str, key: &str) -> Option<String> {
-    let tool_arguments = arguments
-        .split(&format!("tools.{tool_name}"))
-        .nth(1)
-        .unwrap_or(arguments);
-    let marker = tool_arguments
-        .find(key)
-        .map(|index| &tool_arguments[index + key.len()..])?;
-    let value = marker.trim_start_matches(|character: char| {
-        character.is_whitespace() || matches!(character, ':' | '=')
-    });
+    let value = tool_argument_property(arguments, tool_name, key)?;
     if value.starts_with('"') {
         let mut escaped = false;
         for (index, character) in value.char_indices().skip(1) {
@@ -1845,6 +1965,79 @@ mod tests {
     static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
 
     #[test]
+    fn preserves_mapped_commands_and_polls_from_reported_session() {
+        let records: Vec<Value> =
+            serde_json::from_str(include_str!("../../e2e/fixtures/mixed-orchestration.json"))
+                .unwrap();
+        let raw = records
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        let detail = parse_session_detail(record("/tmp/session.jsonl"), raw);
+        let tool = &detail.turns[0].tool_calls[0];
+        assert_eq!(detail.turns[0].tool_calls.len(), 1);
+        assert_eq!(tool.name, "exec");
+        assert_eq!(tool.status.as_deref(), Some("completed"));
+        assert!(!tool.is_error);
+        assert_eq!(
+            serde_json::from_str::<Value>(tool.output.as_deref().unwrap()).unwrap(),
+            records[1]["payload"]["output"]
+        );
+        assert_eq!(detail.turns[0].token_events[0].total_tokens, 102659);
+    }
+
+    #[test]
+    fn preserves_dynamic_and_poll_batches_without_adopting_a_child_process() {
+        for input in [
+            "await Promise.allSettled(commands.map(async cmd=>text(await tools.exec_command({cmd}))));",
+            "text(await tools.write_stdin({session_id:42,chars:\"\"})); text(await tools.write_stdin({session_id:43,chars:\"\"}));",
+        ] {
+            let output = serde_json::json!([
+                {"type":"input_text","text":"Script completed\nWall time 0.2 seconds\nOutput:\n"},
+                {"type":"input_text","text":r#"{"session_id":42,"output":"still running"}"#},
+                {"type":"input_text","text":r#"{"session_id":43,"output":"also running"}"#},
+            ]);
+            let raw = [
+                response_item("2026-10-09T00:00:01.000Z", serde_json::json!({
+                    "type":"custom_tool_call","call_id":"batch","name":"exec","input":input,
+                })),
+                response_item("2026-10-09T00:00:02.000Z", serde_json::json!({
+                    "type":"custom_tool_call_output","call_id":"batch","output":output,
+                })),
+                response_item("2026-10-09T00:00:03.000Z", serde_json::json!({
+                    "type":"custom_tool_call","call_id":"poll","name":"exec",
+                    "input":"text(await tools.write_stdin({session_id:42,chars:\"\"}));",
+                })),
+            ].join("\n");
+            let detail = parse_session_detail(record("/tmp/session.jsonl"), raw);
+            assert_eq!(detail.turns[0].tool_calls.len(), 2);
+            let tool = &detail.turns[0].tool_calls[0];
+            assert_eq!(tool.status.as_deref(), Some("completed"));
+            assert_eq!(serde_json::from_str::<Value>(tool.output.as_deref().unwrap()).unwrap(), output);
+        }
+    }
+
+    #[test]
+    fn does_not_attach_an_unknown_call_id_to_a_pending_call_of_the_same_name() {
+        let raw = [
+            response_item("2026-10-09T00:00:01.000Z", serde_json::json!({
+                "type":"function_call","call_id":"known","name":"exec_command","arguments":"{\"cmd\":\"first\"}",
+            })),
+            response_item("2026-10-09T00:00:02.000Z", serde_json::json!({
+                "type":"function_call_output","call_id":"unknown","name":"exec_command","output":"other result",
+            })),
+        ].join("\n");
+        let detail = parse_session_detail(record("/tmp/session.jsonl"), raw);
+        assert_eq!(detail.turns[0].tool_calls.len(), 2);
+        assert!(detail.turns[0].tool_calls[0].output.is_none());
+        assert_eq!(
+            detail.turns[0].tool_calls[1].call_id.as_deref(),
+            Some("unknown")
+        );
+    }
+
+    #[test]
     fn preserves_batched_exec_results_without_failing_the_parent_tool() {
         let output = serde_json::json!([
             {"type": "input_text", "text": "Script completed\nWall time 0.4 seconds\nOutput:\n"},
@@ -1915,6 +2108,27 @@ mod tests {
         assert!(extract_process_continuation("exec", "text(await tools.write_stdin({session_id:42})); text(await tools.exec_command({cmd:\"next\"}));").is_none());
         assert!(extract_process_continuation("exec", "text(await tools.write_stdin({session_id:42})); text(await tools.write_stdin({session_id:43}));").is_none());
         assert!(extract_process_continuation("exec", "// tools.exec_command({})\ntext(await tools.write_stdin({session_id:42,chars:\"tools.exec_command({})\"}));").is_some());
+        assert!(extract_process_continuation(
+            "exec",
+            "text(await tools.write_stdin(options)); text({session_id:42});"
+        )
+        .is_none());
+        assert!(extract_process_continuation("exec", "const note=\"tools.write_stdin({session_id:42})\"; text(await tools.exec_command({cmd:\"test\"}));").is_none());
+        assert!(!is_exec_command_call(
+            "exec",
+            Some(
+                "text(await tools.write_stdin({session_id:42,chars:\"tools.exec_command({})\"}));"
+            )
+        ));
+        assert_eq!(
+            extract_process_continuation(
+                "exec",
+                "text(await tools.write_stdin({chars:\"session_id:42\",session_id:43}));"
+            )
+            .unwrap()
+            .session_id,
+            "43"
+        );
     }
 
     #[test]

@@ -6,6 +6,43 @@ import i18n from "@/i18n";
 import { buildConversation } from "@/lib/session-conversation";
 import type { SessionReplayDetail } from "@/lib/api";
 import { ConversationItem } from "./session-detail-modal";
+import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
+
+it("renders the reported mapped orchestration as five decoded results with one outer token badge", async () => {
+  await i18n.changeLanguage("en");
+  const [call, response] = mixedOrchestration;
+  const output = response.payload.output!;
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "1", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: "mixed", name: "exec", status: "completed",
+      arguments: call.payload.input!, output: JSON.stringify(output),
+      stderr: null, startedAt: null, completedAt: null, durationMs: 6300, isError: false, rawJsonlLineNumbers: [1, 2],
+    }, {
+      kind: "tokenUsage", timestamp: null, model: "gpt-6", inputTokens: 102416, cachedInputTokens: 99840,
+      outputTokens: 243, reasoningOutputTokens: 67, totalTokens: 102659,
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={mixedOrchestration.map((record) => JSON.stringify(record))} />);
+  expect(screen.getByRole("button", { name: /exec · completed/ })).toBeInTheDocument();
+  expect(screen.queryByText(/write_stdin · completed/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Script completed/)).not.toBeInTheDocument();
+  expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
+  expect(screen.getAllByRole("button", { name: /^Output #/ })).toHaveLength(5);
+  expect(screen.getByText("Process session: 85274")).toBeInTheDocument();
+  expect(screen.getByText("Process session: 25450")).toBeInTheDocument();
+  expect(screen.getByText("Exit code: 101")).toBeInTheDocument();
+  const failed = screen.getByRole("button", { name: "Output #4" });
+  expect(failed.parentElement).toHaveClass("border-error/40");
+  const first = screen.getByRole("button", { name: "Output #1" });
+  await userEvent.click(first);
+  expect(first.parentElement?.querySelector("pre")?.textContent).toContain(JSON.parse(output[1].text).output.trim());
+  await userEvent.click(screen.getByRole("button", { name: /exec · completed/ }));
+  expect(screen.getByRole("button", { name: /exec · completed/ }).parentElement?.querySelector("pre")?.textContent).toBe(call.payload.input);
+  await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
+  expect(screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.querySelector("pre")?.textContent).toContain(JSON.stringify(response));
+});
 
 it("renders async user input titles and optional string choices as readable questions", async () => {
   await i18n.changeLanguage("en");
@@ -176,7 +213,7 @@ it("renders nested orchestration calls as ordered CLI-style activities", async (
   expect(screen.getByRole("img", { name: "/tmp/result.png" })).toBeInTheDocument();
 });
 
-it("renders background terminal polling like Codex CLI", async () => {
+it("preserves dynamic terminal polling as an outer script with readable output", async () => {
   await i18n.changeLanguage("en");
   const turn: SessionReplayDetail["turns"][number] = {
     turnId: "1", startedAt: null, completedAt: null, durationMs: null,
@@ -194,11 +231,10 @@ it("renders background terminal polling like Codex CLI", async () => {
 
   render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={[]} />);
 
-  expect(screen.getByText("Waited for background terminal")).toBeInTheDocument();
-  expect(screen.queryByText(/Background task output/)).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /exec · completed/ })).toBeInTheDocument();
+  expect(screen.getByText(/Background task output/)).toBeInTheDocument();
   expect(screen.queryByText(/session_id/)).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /exec · completed/ })).not.toBeInTheDocument();
-  const poll = screen.getByRole("button", { name: /Waited for background terminal/ });
+  const poll = screen.getByRole("button", { name: /exec · completed/ });
   expect(poll).toHaveAttribute("aria-expanded", "false");
   await userEvent.click(poll);
   expect(poll).toHaveAttribute("aria-expanded", "true");

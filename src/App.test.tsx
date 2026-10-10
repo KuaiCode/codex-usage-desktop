@@ -1713,9 +1713,14 @@ describe("App", () => {
     expect(toolCallButton).toHaveAttribute("aria-expanded", "false");
     expect(toolCall).not.toHaveTextContent("LONG_ARGUMENT_TAIL");
     expect(toolCall).not.toHaveTextContent("LONG_TOOL_OUTPUT_TAIL");
-    const batchSuccess = screen.getByRole("button", { name: /Ran \(200ms\) pnpm test/ });
-    const batchFailure = screen.getByRole("button", { name: /Ran \(100ms\) rtk rg missing src/ });
+    const batchCall = screen.getByRole("button", { name: /exec · completed/ }).parentElement!;
+    const batchSuccess = within(batchCall).getByRole("button", { name: "Output #1" });
+    const batchFailure = within(batchCall).getByRole("button", { name: "Output #2" });
     expect(batchSuccess.parentElement).toHaveTextContent("tests passed");
+    expect(batchSuccess.parentElement).toHaveTextContent("Exit code: 0");
+    expect(batchSuccess.parentElement).toHaveTextContent("Wall time: 200ms");
+    expect(batchFailure.parentElement).toHaveTextContent("Exit code: 1");
+    expect(batchFailure.parentElement).toHaveTextContent("Wall time: 100ms");
     expect(batchFailure.querySelector(".text-error")).toBeInTheDocument();
     const runningActivity = screen.getByRole("button", { name: /Running \(11s\) pnpm test src\/App.test.tsx && pnpm typecheck/ });
     expect(runningActivity).toHaveAttribute("aria-expanded", "false");

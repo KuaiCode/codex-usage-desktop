@@ -1,7 +1,7 @@
 import {
   buildSessionConversation, cleanExecOutput, formatActivityDuration, formatJsonForDisplay, formatToolArgumentValue,
   parseToolContentBlocks, parseUserInputAnswers, processExitCode, processSignal, splitWebSearchResults, summarizeOutput,
-  type ConversationBlock, type DisplayTokenUsageItem, type NestedActivity, type ReplayItem, type TimelineEntry, type TokenUsageItem, type ToolActivity, type UserInputQuestion, type WebSearchResult,
+  type ConversationBlock, type DisplayTokenUsageItem, type ExecOutput, type NestedActivity, type ReplayItem, type TimelineEntry, type TokenUsageItem, type ToolActivity, type UserInputQuestion, type WebSearchResult,
 } from "@/lib/session-conversation";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Coins, Database, FileDiff, FileJson, FolderOpen, GitBranch, Info, List, Loader2, RefreshCcw, MessageSquare, Terminal, Wrench, X } from "lucide-react";
@@ -577,9 +577,42 @@ function ActivityOutput({ text, expanded, tone }: { text: string; expanded: bool
   return <pre className={`mt-1 whitespace-pre-wrap break-words border-l border-border/60 pl-4 ${tone}`}>{`└ ${output}`}</pre>;
 }
 
-function NestedActivityItem({ activity, tokenUsage }: { activity: NestedActivity; tokenUsage?: TokenUsageItem }) {
+function ExecOutputMetadata({ output }: { output: ExecOutput }) {
+  const { t } = useTranslation();
+  return <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+    {output.exitCode !== null ? <span>{t("sessions.detail.exit_code")}: {output.exitCode}</span> : null}
+    {output.wallTimeSeconds !== null ? <span>{t("sessions.detail.wall_time")}: {formatActivityDuration(output.wallTimeSeconds * 1000)}</span> : null}
+    {output.sessionId !== null ? <span>{t("sessions.detail.process_session")}: {output.sessionId}</span> : null}
+  </div>;
+}
+
+function ExecResultItem({ output, index }: { output: ExecOutput; index: number }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const failed = output.rejected || (output.exitCode !== null && output.exitCode !== 0);
+  return <div className={`rounded-md border p-2 ${failed ? ITEM_TONES.error : "border-border/50"}`}>
+    <button type="button" className={`flex w-full items-center justify-between text-left ${DISCLOSURE_BUTTON_CLASS}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+      <span className={failed ? "font-semibold text-error" : "font-semibold"}>{t("sessions.detail.output")} #{index + 1}</span>
+      {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+    </button>
+    <ExecOutputMetadata output={output} />
+    {output.stdout ? <ActivityOutput text={cleanExecOutput(output.stdout)} expanded={expanded} tone={failed ? "text-error" : "text-muted-foreground"} /> : null}
+    {output.stderr ? <ActivityOutput text={output.stderr} expanded={expanded} tone="text-error" /> : null}
+  </div>;
+}
+
+function NestedActivityItem({ activity }: { activity: NestedActivity }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+
+  if (activity.kind === "terminal") {
+    const text = [activity.output?.stdout, activity.output?.stderr].filter(Boolean).join("\n");
+    return <div>
+      <BackgroundTerminalItem input={activity.input} output={text || null} rawJsonl={[]} />
+      {activity.output?.sessionId == null ? <div className="text-[11px] text-muted-foreground">{t("sessions.detail.process_session")}: {activity.sessionId}</div> : null}
+      {activity.output ? <ExecOutputMetadata output={activity.output} /> : null}
+    </div>;
+  }
 
   if (activity.kind === "patch") {
     const { files, additions, deletions, label } = patchSummary(activity.patch, t);
@@ -589,7 +622,7 @@ function NestedActivityItem({ activity, tokenUsage }: { activity: NestedActivity
           <span className="text-muted-foreground">•</span><span className="min-w-0 break-all">{label}</span>
           {files.length ? <><span className="text-green-600 dark:text-green-400">+{additions}</span><span className="text-red-600 dark:text-red-400">-{deletions}</span></> : null}
         </span>
-        <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
+        <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
       </button>
       {expanded ? <div className="ml-4 mt-2"><PatchDiffBlock patch={activity.patch} expanded hideHeader /></div> : null}
     </div>;
@@ -599,20 +632,21 @@ function NestedActivityItem({ activity, tokenUsage }: { activity: NestedActivity
     return <div className="py-1.5">
       <button type="button" className={`flex w-full items-start justify-between gap-3 text-left ${DISCLOSURE_BUTTON_CLASS}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
         <span className="min-w-0"><span className="font-semibold"><span className="mr-1.5 text-muted-foreground">•</span>{t("sessions.detail.viewed_image")}</span><span className="mt-1 block break-all border-l border-border/60 pl-4 text-muted-foreground">└ {activity.path}</span></span>
-        <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}{activity.imageUrl ? expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" /> : null}</span>
+        <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{activity.imageUrl ? expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" /> : null}</span>
       </button>
       {expanded && activity.imageUrl ? <img src={activity.imageUrl} alt={activity.path} loading="lazy" className="ml-4 mt-2 max-h-80 max-w-[calc(100%-1rem)] rounded-md border border-border/60 bg-background object-contain" /> : null}
     </div>;
   }
 
-  const failed = activity.output?.exitCode != null && activity.output.exitCode !== 0;
+  const failed = activity.output?.rejected || (activity.output?.exitCode != null && activity.output.exitCode !== 0);
   const stdout = activity.output?.stdout ? cleanExecOutput(activity.output.stdout) : null;
   const duration = activity.output?.wallTimeSeconds == null ? null : formatActivityDuration(activity.output.wallTimeSeconds * 1000);
   return <div className="py-1.5">
     <button type="button" className={`flex w-full min-w-0 items-start justify-between gap-3 text-left ${DISCLOSURE_BUTTON_CLASS}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
       <span className="flex min-w-0 gap-1.5"><span className={failed ? "shrink-0 text-error" : "shrink-0 text-muted-foreground"}>•</span><span className="min-w-0 whitespace-pre-wrap break-words"><span className="font-semibold">{t("sessions.detail.activity_ran")}</span>{duration ? ` (${duration})` : ""} {expanded ? activity.command : buildCollapsedPreview(activity.command, 1)}</span></span>
-      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
+      <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
     </button>
+    {activity.output ? <ExecOutputMetadata output={activity.output} /> : null}
     {stdout ? <ActivityOutput text={stdout} expanded={expanded} tone={failed ? "text-error" : "text-muted-foreground"} /> : null}
     {activity.output?.stderr ? <ActivityOutput text={activity.output.stderr} expanded={expanded} tone="text-error" /> : null}
   </div>;
@@ -792,7 +826,7 @@ function BackgroundTerminalItem({ input, output, tokenUsage, rawJsonl }: { input
 function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: ToolActivity; item: Extract<ReplayItem, { kind: "toolCall" }>; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, batchActivities, nestedActivities, unparsedOutputText, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
+  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
   const argumentsTitle = execArguments?.kind === "patch"
     ? t("sessions.detail.patch_input")
     : t(execArguments ? "sessions.detail.command" : "sessions.detail.arguments");
@@ -806,22 +840,26 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
   }
 
   if (backgroundTerminalInput !== null) {
-    const response = [contentBlocks?.texts.join("\n") ?? outputText, stderrText].filter(Boolean).join("\n");
+    const response = [
+      ...(unpairedOutputs.length ? unpairedOutputs.flatMap((output) => [output.stdout, output.stderr]) : [contentBlocks?.texts.join("\n") ?? outputText]),
+      unpairedOutputs.length ? unparsedOutputText : null, stderrText,
+    ].filter(Boolean).join("\n");
     return <BackgroundTerminalItem input={backgroundTerminalInput} output={cleanExecOutput(response) || null} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
   }
 
   if (nestedActivities) {
     return <div className={`rounded-lg border p-3 font-mono text-xs leading-relaxed ${item.isError ? ITEM_TONES.error : ITEM_TONES.tool}`}>
+      {tokenUsage ? <div className="mb-2 flex justify-end"><TokenMetadata usage={tokenUsage} /></div> : null}
       <div className="space-y-1">
         {nestedActivities.map((nestedActivity, index) => (
           <NestedActivityItem
             key={`${nestedActivity.kind}-${index}`}
             activity={nestedActivity}
-            tokenUsage={index === nestedActivities.length - 1 ? tokenUsage : undefined}
           />
         ))}
       </div>
-      {unparsedOutputText ? <div className="mt-2">
+      {unpairedOutputs.map((output, index) => <ExecResultItem key={index} output={output} index={index} />)}
+      {unparsedOutputText || stderrText ? <div className="mt-2">
         <button
           type="button"
           className={`flex w-full items-center justify-between gap-3 text-left text-muted-foreground ${DISCLOSURE_BUTTON_CLASS}`}
@@ -831,63 +869,11 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
           <span>{t("sessions.detail.output")}</span>
           {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
         </button>
-        <ActivityOutput text={unparsedOutputText} expanded={isExpanded} tone="text-muted-foreground" />
+        {unparsedOutputText ? <ActivityOutput text={unparsedOutputText} expanded={isExpanded} tone="text-muted-foreground" /> : null}
+        {stderrText ? <ActivityOutput text={stderrText} expanded={isExpanded} tone="text-error" /> : null}
       </div> : null}
       <RawJsonlDisclosure rawJsonl={rawJsonl} />
     </div>;
-  }
-
-  if (batchActivities) {
-    return (
-      <div className={`rounded-lg border p-3 font-mono text-xs leading-relaxed ${item.isError ? ITEM_TONES.error : ITEM_TONES.tool}`}>
-        <button
-          type="button"
-          className={`flex w-full items-center justify-between gap-3 text-left text-foreground ${DISCLOSURE_BUTTON_CLASS}`}
-          aria-expanded={isExpanded}
-          onClick={() => setIsExpanded((value) => !value)}
-        >
-          <span className="flex min-w-0 items-center gap-1.5">
-            <Terminal className="h-3.5 w-3.5 shrink-0 text-cyan-700 dark:text-cyan-300" />
-            <span className="truncate">{item.name} · {item.status ?? "completed"} · {t("sessions.detail.tool_count", { count: batchActivities.length })}</span>
-          </span>
-          <span className="flex shrink-0 items-center gap-3 font-sans text-muted-foreground">
-            {tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}
-            <span className="flex items-center gap-1">
-              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              {isExpanded ? t("sessions.detail.collapse") : t("sessions.detail.expand")}
-            </span>
-          </span>
-        </button>
-        <div className="mt-3 space-y-2">
-          {batchActivities.map(({ result, arguments: activityArguments }, index) => {
-            const failed = result.isRejected || (result.exitCode !== null && result.exitCode !== 0);
-            const duration = result.wallTimeSeconds === null ? null : formatActivityDuration(result.wallTimeSeconds * 1000);
-            const command = activityArguments?.command ?? `${item.name} ${index + 1}`;
-            const stdout = result.stdout ? cleanExecOutput(result.stdout) : null;
-            const statusTone = failed ? "text-error" : "text-emerald-700 dark:text-emerald-300";
-            return (
-              <div key={`${index}-${command}`} className={`rounded-md border px-3 py-2 ${failed ? ITEM_TONES.error : "border-border/50 bg-muted/25"}`}>
-                <div className="flex min-w-0 gap-1.5 text-foreground">
-                  <span className={`shrink-0 ${statusTone}`}>•</span>
-                  <span className="min-w-0 whitespace-pre-wrap break-words">
-                    {t("sessions.detail.activity_ran")}
-                    {duration || result.exitCode !== null ? " (" : " "}
-                    {duration}
-                    {duration && result.exitCode !== null ? ", " : null}
-                    {result.exitCode !== null ? <span className={statusTone}>exit {result.exitCode}</span> : null}
-                    {duration || result.exitCode !== null ? ") " : null}
-                    {isExpanded ? command : buildCollapsedPreview(command, 1)}
-                  </span>
-                </div>
-                {stdout ? <ActivityOutput text={stdout} expanded={isExpanded} tone={failed ? "text-error" : "text-muted-foreground"} /> : null}
-                {result.stderr ? <ActivityOutput text={result.stderr} expanded={isExpanded} tone="text-error" /> : null}
-              </div>
-            );
-          })}
-        </div>
-        <RawJsonlDisclosure rawJsonl={rawJsonl} />
-      </div>
-    );
   }
 
   if (execArguments?.kind === "command") {
@@ -1001,13 +987,14 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
             <span className="break-all font-mono text-foreground">{execArguments.workdir}</span>
           </div>
         ) : null}
-        {execOutput && (execOutput.exitCode !== null || execOutput.wallTimeSeconds !== null || execOutput.sessionId !== null) ? (
+        {execOutput && unpairedOutputs.length === 0 && (execOutput.exitCode !== null || execOutput.wallTimeSeconds !== null || execOutput.sessionId !== null) ? (
           <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
             {execOutput.exitCode !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.exit_code")}: {execOutput.exitCode}</span> : null}
             {execOutput.wallTimeSeconds !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.wall_time")}: {execOutput.wallTimeSeconds}s</span> : null}
             {execOutput.sessionId !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.process_session")}: {execOutput.sessionId}</span> : null}
           </div>
         ) : null}
+        {unpairedOutputs.map((output, index) => <ExecResultItem key={index} output={output} index={index} />)}
         {outputText ? (
           isExpanded
             ? <ToolTextBlock title={t("sessions.detail.output")} text={outputText} />

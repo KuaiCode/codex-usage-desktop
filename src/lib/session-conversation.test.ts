@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { buildConversation, buildSessionConversation, classifyExploration, summarizeOutput, type ReplayItem } from "./session-conversation";
+import { buildConversation, buildSessionConversation, classifyExploration, parseToolContentBlocks, summarizeOutput, type ReplayItem } from "./session-conversation";
 import type { SessionReplayDetail } from "./api";
+import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 
 function replayTurn(items: ReplayItem[]): SessionReplayDetail["turns"][number] {
   return { turnId: "1", startedAt: null, completedAt: null, durationMs: null, systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [], toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items };
@@ -13,6 +14,65 @@ function usage(totalTokens: number): ReplayItem {
 }
 
 describe("conversation projection", () => {
+  it("retains all results of mapped commands and terminal polls without borrowing a poll's arguments", () => {
+    const [call, response] = mixedOrchestration;
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: call.payload.input!, output: JSON.stringify(response.payload.output),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    const activity = block.entry.activity!;
+    expect(activity.displayToolName).toBe("exec");
+    expect(activity.argumentEntries).toEqual([]);
+    expect(activity.argumentsText).toBe(call.payload.input);
+    expect(activity.nestedActivities).toBeNull();
+    expect(activity.unpairedOutputs).toHaveLength(5);
+    expect(activity.unpairedOutputs[0].stdout).toContain("unparsedOutputText");
+    expect(activity.unpairedOutputs[1].sessionId).toBe(85274);
+    expect(activity.unpairedOutputs[3].exitCode).toBe(101);
+    expect(activity.unpairedOutputs[4].sessionId).toBe(99948);
+    expect(activity.outputText).toBeNull();
+  });
+
+  it("does not infer source ordering from unindexed concurrent results", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'await Promise.all([tools.exec_command({cmd:"first"}),tools.exec_command({cmd:"second"})].map(async p=>text(await p)));',
+      output: JSON.stringify([{ type: "input_text", text: JSON.stringify({ exit_code: 0, output: "second finished first" }) }]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+    expect(block.entry.activity?.execArguments).toBeNull();
+    expect(block.entry.activity?.unpairedOutputs[0].stdout).toBe("second finished first");
+  });
+
+  it("ignores quoted and commented calls and never reads another call's object as an argument", () => {
+    const script = '// tools.write_stdin({session_id:99})\nconst note="tools.exec_command({cmd:\\"fake\\"})";\ntext(await tools.exec_command(options)); text(await tools.write_stdin({session_id:42,chars:""}));';
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.displayToolName).toBe("exec");
+    expect(block.entry.activity?.argumentEntries).toEqual([]);
+    expect(block.entry.activity?.argumentsText).toBe(script);
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+  });
+
+  it("does not project calls mentioned inside a regular expression", () => {
+    const script = 'const pattern=/tools.write_stdin({session_id:42})/; text(await tools.exec_command({cmd:"pnpm test"}));';
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.backgroundTerminalInput).toBeNull();
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+    expect(block.entry.activity?.execArguments).toBeNull();
+    expect(block.entry.activity?.argumentsText).toBe(script);
+  });
+
+  it("preserves mixed search and command output as one orchestration", () => {
+    const script = 'text(await tools.web__run({search_query:[{q:"example"}]})); text(await tools.exec_command({cmd:"pnpm test"}));';
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.webSearchQueries).toBeNull();
+    expect(block.entry.activity?.argumentsText).toBe(script);
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+  });
+
   it("groups adjacent exploration without losing calls, raw provenance or token attribution", () => {
     const blocks = buildConversation(replayTurn([
       command("rg -n shimmer src", { rawJsonlLineNumbers: [1, 2] }), usage(100),
@@ -118,6 +178,7 @@ describe("conversation projection", () => {
     })]))[0];
     if (block.kind !== "item") throw new Error("Expected tool activity");
     expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "terminal", sessionId: 42, input: "", output: { stdout: "poll response" } },
       { command: "first", output: { stderr: "command unavailable", exitCode: null } },
       { command: "second", output: { stdout: "second response", sessionId: 43 } },
     ]);
@@ -130,6 +191,50 @@ describe("conversation projection", () => {
     })]))[0];
     if (block.kind !== "item") throw new Error("Expected tool activity");
     expect(block.entry.activity?.unparsedOutputText).toContain("second response");
+  });
+
+  it("keeps an incomplete unindexed response unpaired instead of assigning it to the first command", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.exec_command({cmd:"first"})); text(await tools.exec_command({cmd:"second"}));',
+      output: JSON.stringify([{ type: "input_text", text: JSON.stringify({ exit_code: 0, output: "possibly second" }) }]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([{ command: "first", output: null }, { command: "second", output: null }]);
+    expect(block.entry.activity?.unpairedOutputs[0].stdout).toBe("possibly second");
+  });
+
+  it("retains duplicate indexed outputs without overwriting either result", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.exec_command({cmd:"first"})); text(await tools.exec_command({cmd:"second"}));',
+      output: JSON.stringify(["first chunk", "second chunk"].map((output) => ({ type: "input_text", text: JSON.stringify({ i: 0, exit_code: 0, output }) }))),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([{ output: null }, { output: null }]);
+    expect(block.entry.activity?.unpairedOutputs.map((output) => output.stdout)).toEqual(["first chunk", "second chunk"]);
+  });
+
+  it("does not assume indices in a mixed batch count only process calls", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'text(await tools.exec_command({cmd:"first"})); text(await tools.apply_patch("patch")); text(await tools.exec_command({cmd:"second"}));',
+      output: JSON.stringify(["first response", "patch response", "second response"].map((output, i) => ({ type: "input_text", text: JSON.stringify({ i, output, wall_time_seconds: 1 }) }))),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([{ command: "first", output: null }, { kind: "patch" }, { command: "second", output: null }]);
+    expect(block.entry.activity?.unpairedOutputs.map((output) => output.stdout)).toEqual(["first response", "patch response", "second response"]);
+  });
+
+  it("keeps returned variables unpaired when their print order differs from call order", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: 'const a=await tools.exec_command({cmd:"first"}); const b=await tools.exec_command({cmd:"second"}); text(b); text(a);',
+      output: JSON.stringify(["second response", "first response"].map((output) => ({ type: "input_text", text: JSON.stringify({ exit_code: 0, output }) }))),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected tool activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([{ command: "first", output: null }, { command: "second", output: null }]);
+    expect(block.entry.activity?.unpairedOutputs.map((output) => output.stdout)).toEqual(["second response", "first response"]);
+  });
+
+  it("preserves boundaries between separate text content blocks", () => {
+    expect(parseToolContentBlocks(JSON.stringify([{ type: "input_text", text: "first" }, { type: "input_text", text: "second" }]))?.text).toBe("first\nsecond");
   });
 
   it("keeps the head and tail with an exact omitted line count", () => {
