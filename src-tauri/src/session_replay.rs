@@ -340,6 +340,14 @@ impl ReplayParseState {
             .unwrap_or_else(|| UNGROUPED_TURN_ID.to_string());
 
         if event_type == "item_completed"
+            && event.pointer("/item/type").and_then(Value::as_str) == Some("Extension")
+            && event.pointer("/item/kind").and_then(Value::as_str) == Some("clock.sleep")
+        {
+            self.ingest_clock_sleep_completion(&turn_id, event, timestamp, line_number);
+            return;
+        }
+
+        if event_type == "item_completed"
             && event.pointer("/item/type").and_then(Value::as_str) == Some("CommandExecution")
         {
             self.ingest_command_execution(&turn_id, event, timestamp.clone(), line_number);
@@ -905,6 +913,86 @@ impl ReplayParseState {
         });
     }
 
+    fn ingest_clock_sleep_completion(
+        &mut self,
+        fallback_turn_id: &str,
+        event: &Value,
+        timestamp: Option<String>,
+        line_number: usize,
+    ) {
+        let item = &event["item"];
+        let Some(call_id) = string_field(item, "id") else {
+            return;
+        };
+        let arguments = item["durationMs"]
+            .as_u64()
+            .map(|duration| serde_json::json!({ "duration_ms": duration }).to_string());
+        let (turn_id, _, _) = self
+            .pending_tools
+            .entry(call_id.clone())
+            .or_insert_with(|| {
+                (
+                    fallback_turn_id.to_string(),
+                    "clock.sleep".to_string(),
+                    arguments.clone(),
+                )
+            })
+            .clone();
+        let millis_timestamp = |key: &str| {
+            event[key]
+                .as_i64()
+                .and_then(DateTime::<Utc>::from_timestamp_millis)
+                .map(|time| time.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+        };
+        let started_at = millis_timestamp("started_at_ms");
+        let completed_at = millis_timestamp("completed_at_ms").or(timestamp);
+        let turn = self.turn_mut(&turn_id);
+        let index = turn
+            .tool_calls
+            .iter()
+            .position(|tool| tool.call_id.as_ref() == Some(&call_id));
+        let tool = if let Some(index) = index {
+            &mut turn.tool_calls[index]
+        } else {
+            turn.tool_calls.push(SessionReplayToolCall {
+                call_id: Some(call_id.clone()),
+                name: "clock.sleep".to_string(),
+                status: None,
+                arguments: None,
+                output: None,
+                stderr: None,
+                started_at: None,
+                completed_at: None,
+                duration_ms: None,
+                is_error: false,
+                command_executions: Vec::new(),
+                native_command: false,
+            });
+            turn.tool_calls.last_mut().unwrap()
+        };
+        tool.name = "clock.sleep".to_string();
+        if tool.arguments.is_none() {
+            tool.arguments = arguments;
+        }
+        tool.started_at = started_at.or(tool.started_at.take());
+        tool.completed_at = completed_at.or(tool.completed_at.take());
+        if tool.output.is_none() {
+            // Lifecycle completion does not tell us whether sleep was interrupted.
+            tool.status = Some("completed".to_string());
+        }
+        tool.duration_ms =
+            duration_between(tool.started_at.as_deref(), tool.completed_at.as_deref());
+        let tool = tool.clone();
+        if let Some(SessionReplayItem::ToolCall { tool: item_tool, raw_jsonl_line_numbers }) = turn.items.iter_mut()
+            .find(|entry| matches!(entry, SessionReplayItem::ToolCall { tool, .. } if tool.call_id.as_ref() == Some(&call_id)))
+        {
+            *item_tool = tool;
+            raw_jsonl_line_numbers.push(line_number);
+        } else {
+            turn.items.push(SessionReplayItem::ToolCall { tool, raw_jsonl_line_numbers: vec![line_number] });
+        }
+    }
+
     fn ingest_tool_output(
         &mut self,
         fallback_turn_id: &str,
@@ -1033,6 +1121,8 @@ impl ReplayParseState {
                 tool.status = status.clone();
                 tool.completed_at = if status.as_deref() == Some("running") {
                     None
+                } else if tool.name == "clock.sleep" {
+                    tool.completed_at.take().or(timestamp.clone())
                 } else {
                     timestamp.clone()
                 };
@@ -1442,6 +1532,16 @@ fn extract_call_id(value: &Value) -> Option<String> {
 
 fn extract_tool_name(value: &Value) -> Option<String> {
     string_field(value, "name")
+        .map(|name| match string_field(value, "namespace") {
+            Some(namespace)
+                if !namespace.is_empty()
+                    && namespace != "functions"
+                    && !name.starts_with(&format!("{namespace}.")) =>
+            {
+                format!("{namespace}.{name}")
+            }
+            _ => name,
+        })
         .or_else(|| string_field(value, "tool_name"))
         .or_else(|| string_field(value, "command"))
         .or_else(|| {
@@ -2197,6 +2297,109 @@ mod tests {
     };
 
     static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn merges_clock_sleep_completion_without_pairing_background_commands_or_losing_tokens() {
+        let records: Vec<Value> =
+            serde_json::from_str(include_str!("../../e2e/fixtures/clock-sleep.json")).unwrap();
+        let detail = parse_session_detail(
+            record("/tmp/sleep.jsonl"),
+            records
+                .iter()
+                .map(Value::to_string)
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+        let turn = &detail.turns[0];
+        assert_eq!(turn.tool_calls.len(), 2);
+        let sleep = turn
+            .tool_calls
+            .iter()
+            .find(|tool| tool.name == "clock.sleep")
+            .unwrap();
+        assert_eq!(
+            sleep.output.as_deref(),
+            Some("Wall time: 20.0673 seconds\nSleep completed.")
+        );
+        assert_eq!(sleep.status.as_deref(), Some("completed"));
+        assert_eq!(
+            sleep.started_at.as_deref(),
+            Some("2026-10-10T18:28:33.185Z")
+        );
+        assert_eq!(sleep.completed_at.as_deref(), Some("2026-10-10T18:28:53.209Z"));
+        assert_eq!(sleep.duration_ms, Some(20024));
+        assert!(!sleep.is_error);
+        assert!(sleep.command_executions.is_empty());
+        assert!(
+            matches!(&turn.items[0], SessionReplayItem::ToolCall { raw_jsonl_line_numbers, .. } if raw_jsonl_line_numbers == &vec![2, 4, 5])
+        );
+        assert!(turn.items.iter().any(|item| matches!(item, SessionReplayItem::TokenUsage { usage, .. } if usage.total_tokens == 82301)));
+        assert_eq!(
+            turn.tool_calls
+                .iter()
+                .filter(|tool| tool.native_command)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn upserts_clock_sleep_extension_only_records_and_keeps_interrupted_output() {
+        let completion = event_msg(
+            "2026-10-10T18:28:53.209Z",
+            serde_json::json!({
+                "type": "item_completed", "item": { "type": "Extension", "kind": "clock.sleep", "id": "sleep-only", "durationMs": 20000 },
+                "started_at_ms": 1791656913185_i64, "completed_at_ms": 1791656933209_i64,
+            }),
+        );
+        let output = response_item(
+            "2026-10-10T18:28:53.256Z",
+            serde_json::json!({
+                "type": "function_call_output", "call_id": "sleep-only", "output": "Wall time: 3.1000 seconds\nSleep interrupted by new input."
+            }),
+        );
+        let partial = parse_session_detail(record("/tmp/sleep.jsonl"), completion.clone());
+        let sleep = &partial.turns[0].tool_calls[0];
+        assert_eq!(sleep.name, "clock.sleep");
+        assert_eq!(sleep.arguments.as_deref(), Some("{\"duration_ms\":20000}"));
+        assert_eq!(sleep.status.as_deref(), Some("completed"));
+        assert!(sleep.output.is_none());
+        let detail = parse_session_detail(
+            record("/tmp/sleep.jsonl"),
+            [completion.clone(), output, completion].join("\n"),
+        );
+        assert_eq!(detail.turns[0].tool_calls.len(), 1);
+        let sleep = &detail.turns[0].tool_calls[0];
+        assert!(sleep
+            .output
+            .as_deref()
+            .unwrap()
+            .contains("Sleep interrupted by new input."));
+        assert!(!sleep.is_error);
+        assert!(
+            matches!(&detail.turns[0].items[0], SessionReplayItem::ToolCall { raw_jsonl_line_numbers, .. } if raw_jsonl_line_numbers == &vec![1, 2, 3])
+        );
+    }
+
+    #[test]
+    fn preserves_tool_namespaces_and_pending_sleep_calls() {
+        let raw = ["clock", "other", "functions"].iter().map(|namespace| response_item("2026-10-10T18:28:33.180Z", serde_json::json!({
+            "type": "function_call", "namespace": namespace, "name": "sleep", "call_id": namespace, "arguments": "{\"duration_ms\":20000}"
+        }))).collect::<Vec<_>>().join("\n");
+        let detail = parse_session_detail(record("/tmp/sleep.jsonl"), raw);
+        assert_eq!(
+            detail.turns[0]
+                .tool_calls
+                .iter()
+                .map(|tool| tool.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["clock.sleep", "other.sleep", "sleep"]
+        );
+        assert!(detail.turns[0]
+            .tool_calls
+            .iter()
+            .all(|tool| tool.completed_at.is_none() && tool.output.is_none()));
+    }
 
     #[test]
     fn pairs_structured_commands_by_identity_even_when_they_finish_after_the_batch() {

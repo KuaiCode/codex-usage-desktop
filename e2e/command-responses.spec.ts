@@ -119,7 +119,8 @@ describe("session command responses", () => {
       await expect(first.$("..").$('pre')).toHaveText(expect.stringContaining(result.output.trim()));
       const failed = dialog.$('button=Output #4');
       await expect(failed.$("..")).toHaveAttribute("class", expect.stringContaining("border-error/40"));
-      await expect(dialog.$('button=Output #5').$("..")).toHaveText(expect.stringContaining("Process session: 99948"));
+      await expect(dialog.$('button=Output #5').$("..")).toHaveText(expect.stringContaining(JSON.parse(mixedOrchestration[1].payload.output![5].text).output.split("\n")[0]));
+      expect(await dialog.getText()).not.toContain("Process session:");
       expect(await dialog.$$('[data-testid="token-metadata"]')).toHaveLength(1);
       await first.click();
       await commands[0].execute((element) => element.scrollIntoView({ block: "start" }));

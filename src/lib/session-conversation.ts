@@ -666,6 +666,14 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     : null;
   const toolName = nestedWriteStdinArguments ? "write_stdin" : outerToolName;
   const parsedArguments = nestedWriteStdinArguments ?? parseJsonObject(item.arguments);
+  const sleep = item.name === "clock.sleep" ? {
+    durationMs: typeof parsedArguments?.duration_ms === "number" && Number.isFinite(parsedArguments.duration_ms) && parsedArguments.duration_ms > 0
+      ? parsedArguments.duration_ms : null,
+    state: item.isError || item.status === "failed" || item.status === "declined" ? "failed" as const
+      : item.output?.split("\n").some((line) => line.trim() === "Sleep interrupted by new input.") ? "interrupted" as const
+      : item.output?.split("\n").some((line) => line.trim() === "Sleep completed.") ? "completed" as const
+      : item.completedAt || item.status === "completed" ? "ended" as const : "pending" as const,
+  } : null;
   const backgroundTerminalInput = parseBackgroundTerminalInput(item.arguments, outerToolName, parsedArguments);
   const userInputQuestions = toolName === "request_user_input" || toolName === "request_user_input_async"
     ? parseUserInputQuestions(item.arguments, toolName === "request_user_input_async") : null;
@@ -737,7 +745,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     : isExec && isEmptyExecOutput(rawOutputText) ? null : rawOutputText;
   const stderrText = execOutput?.stderr ?? item.stderr;
 
-  return { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
+  return { outerToolName, sleep, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
 }
 
 export type ToolActivity = ReturnType<typeof buildToolActivity>;

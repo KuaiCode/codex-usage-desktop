@@ -809,6 +809,46 @@ function BackgroundTerminalItem({ input, output, tokenUsage, rawJsonl }: { input
   );
 }
 
+function SleepItem({ activity, tokenUsage, rawJsonl }: { activity: ToolActivity; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const sleep = activity.sleep!;
+  const duration = sleep.durationMs === null ? null : t("sessions.detail.sleep_seconds", {
+    seconds: (sleep.durationMs / 1000).toLocaleString(undefined, { maximumFractionDigits: 3 }),
+  });
+  const summary = sleep.state === "completed"
+    ? duration ? t("sessions.detail.sleep_completed_duration", { duration }) : t("sessions.detail.sleep_completed")
+    : sleep.state === "pending"
+      ? `${duration ? t("sessions.detail.sleep_requested", { duration }) : t("sessions.detail.sleep_waiting")} · ${t("sessions.detail.sleep_incomplete")}`
+      : sleep.state === "ended"
+        ? `${t("sessions.detail.sleep_ended")}${duration ? ` · ${t("sessions.detail.sleep_requested", { duration })}` : ""}`
+        : t(`sessions.detail.sleep_${sleep.state}`);
+  const failed = sleep.state === "failed";
+
+  return (
+    <div className={`rounded-lg border p-3 text-xs ${failed ? ITEM_TONES.error : ITEM_TONES.tool}`}>
+      <button type="button" className={`flex w-full items-start justify-between gap-3 text-left ${DISCLOSURE_BUTTON_CLASS}`} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+        <span className={`flex min-w-0 items-center gap-1.5 font-semibold ${failed ? ITEM_TITLE_TONES.error : "text-foreground"}`}>
+          <Clock3 className="h-3.5 w-3.5 shrink-0" />
+          <span>{summary}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-3 text-muted-foreground">
+          {tokenUsage ? <TokenMetadata usage={tokenUsage} /> : null}
+          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+        </span>
+      </button>
+      {expanded ? <div className="mt-3 space-y-1">
+        <div><span className="font-semibold text-muted-foreground">{t("sessions.detail.sleep_tool")}: </span><span className="font-mono">clock.sleep</span></div>
+        {duration ? <div><span className="font-semibold text-muted-foreground">{t("sessions.detail.sleep_requested_label")}: </span>{duration}</div> : null}
+        {activity.argumentsText ? <ToolTextBlock title={t("sessions.detail.arguments")} text={activity.argumentsText} /> : null}
+        {activity.outputText ? <ToolTextBlock title={t("sessions.detail.output")} text={activity.outputText} /> : null}
+        {activity.stderrText ? <ToolTextBlock title={t("sessions.detail.stderr")} text={activity.stderrText} /> : null}
+      </div> : null}
+      <RawJsonlDisclosure rawJsonl={rawJsonl} />
+    </div>
+  );
+}
+
 function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: ToolActivity; item: Extract<ReplayItem, { kind: "toolCall" }>; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -816,6 +856,10 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
   const argumentsTitle = execArguments?.kind === "patch"
     ? t("sessions.detail.patch_input")
     : t(execArguments ? "sessions.detail.command" : "sessions.detail.arguments");
+
+  if (activity.sleep) {
+    return <SleepItem activity={activity} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
+  }
 
   if (userInputQuestions) {
     return <UserInputItem item={item} questions={userInputQuestions} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;

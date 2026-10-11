@@ -14,6 +14,38 @@ function usage(totalTokens: number): ReplayItem {
 }
 
 describe("conversation projection", () => {
+  it.each([
+    ["Wall time: 20.0673 seconds\nSleep completed.", "completed", false, "completed"],
+    ["Wall time: 3.1 seconds\nSleep interrupted by new input.", "completed", false, "interrupted"],
+    [null, null, false, "pending"],
+    [null, "completed", false, "ended"],
+    ["Clock unavailable", "failed", true, "failed"],
+  ])("projects clock.sleep output %s as %s", (output, status, isError, state) => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "clock.sleep", arguments: '{"duration_ms":20000}', output, status, isError, completedAt: status === "completed" ? "2026-10-10" : null,
+    }), usage(82301)]))[0];
+    if (block.kind !== "item") throw new Error("Expected waiting activity");
+    expect(block.entry.activity?.sleep).toEqual({ durationMs: 20000, state });
+    expect(block.entry.activity?.outputText).toBe(output);
+    expect(block.entry.tokenUsage?.totalTokens).toBe(82301);
+  });
+
+  it("does not classify other namespaces or unqualified sleep as clock.sleep", () => {
+    for (const name of ["other.sleep", "sleep"]) {
+      const block = buildConversation(replayTurn([command("", { name, arguments: '{"duration_ms":20000}' })]))[0];
+      if (block.kind !== "item") throw new Error("Expected tool");
+      expect(block.entry.activity?.sleep).toBeNull();
+    }
+  });
+
+  it("does not invent a sleep duration when arguments are missing or invalid", () => {
+    for (const argumentsText of [null, "bad json", '{"duration_ms":-1}', '{"duration_ms":"20000"}']) {
+      const block = buildConversation(replayTurn([command("", { name: "clock.sleep", arguments: argumentsText })]))[0];
+      if (block.kind !== "item") throw new Error("Expected tool");
+      expect(block.entry.activity?.sleep?.durationMs).toBeNull();
+    }
+  });
+
   it("does not assign model token usage to an independent native command", () => {
     const blocks = buildConversation(replayTurn([
       { kind: "message", role: "assistant", source: "agent_message", timestamp: null, text: "Checking the command" },

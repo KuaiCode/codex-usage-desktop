@@ -8,6 +8,67 @@ import type { SessionReplayDetail } from "@/lib/api";
 import { ConversationItem } from "./session-detail-modal";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 import structuredCommands from "../../e2e/fixtures/structured-command-responses.json";
+import clockSleep from "../../e2e/fixtures/clock-sleep.json";
+
+it("collapses the reported clock.sleep activity while keeping tokens, complete output and raw provenance", async () => {
+  await i18n.changeLanguage("en");
+  const call = clockSleep.find((record) => record.payload.type === "function_call")!.payload;
+  const output = clockSleep.find((record) => record.payload.type === "function_call_output")!.payload.output!;
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "sleep", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: call.call_id!, name: "clock.sleep", status: "completed", arguments: call.arguments!,
+      output, stderr: null, startedAt: null, completedAt: null, durationMs: 20067, isError: false, rawJsonlLineNumbers: [2, 4, 5],
+    }, {
+      kind: "tokenUsage", timestamp: null, model: "gpt-6", inputTokens: 81764, cachedInputTokens: 80768,
+      outputTokens: 537, reasoningOutputTokens: 516, totalTokens: 82301, rawJsonlLineNumbers: [6],
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={clockSleep.map((record) => JSON.stringify(record))} />);
+  const button = screen.getByRole("button", { name: /Waited 20 seconds/ });
+  expect(button).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
+  expect(screen.getByTestId("token-metadata")).toHaveTextContent("82.3k tokens");
+  expect(screen.queryByText(/Wall time:/)).not.toBeInTheDocument();
+  expect(screen.queryByText("clock.sleep")).not.toBeInTheDocument();
+  await userEvent.click(button);
+  expect(button).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText("clock.sleep")).toBeInTheDocument();
+  expect(button.parentElement?.querySelector("pre")?.textContent).toBe(output);
+  await userEvent.click(button);
+  expect(button.parentElement?.querySelector("pre")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
+  const raw = screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.querySelector("pre")?.textContent;
+  expect(raw).toContain('"namespace":"clock"');
+  expect(raw).toContain('"kind":"clock.sleep"');
+  expect(raw).toContain('"type":"function_call_output"');
+  expect(raw).toContain('"type":"token_count"');
+  expect(raw).not.toContain("background-test-command");
+});
+
+it.each([
+  ["Wall time: 3.1 seconds\nSleep interrupted by new input.", "completed", false, "Wait interrupted by new input"],
+  [null, null, false, "Requested wait 20 seconds · Incomplete"],
+  [null, "completed", false, "Wait ended · Requested wait 20 seconds"],
+  ["Clock unavailable", "failed", true, "Wait failed"],
+])("renders clock.sleep state %s without assuming successful completion", async (output, status, isError, label) => {
+  await i18n.changeLanguage("en");
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "sleep", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: "sleep", name: "clock.sleep", status, arguments: '{"duration_ms":20000}',
+      output, stderr: null, startedAt: null, completedAt: null, durationMs: null, isError,
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={[]} />);
+  const button = screen.getByRole("button", { name: label });
+  expect(button.parentElement).toHaveClass(isError ? "border-error/40" : "border-cyan-300/70");
+  expect(screen.queryByRole("button", { name: /Waited 20 seconds/ })).not.toBeInTheDocument();
+  await userEvent.click(button);
+  if (output) expect(button.parentElement?.querySelector("pre")?.textContent).toBe(output);
+});
 
 it("renders structured parallel responses under their commands with stable identities", async () => {
   await i18n.changeLanguage("en");
