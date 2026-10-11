@@ -2461,13 +2461,15 @@ mod tests {
 
     #[test]
     fn upserts_structured_ids_and_preserves_commands_without_an_outer_call() {
+        let workdir = std::env::temp_dir().join("repo").join("with space");
+        let workdir_url = reqwest::Url::from_file_path(&workdir).unwrap();
         let command = |id: &str, output: &str, status: &str| {
             event_msg(
                 "2026-10-09T00:00:01.000Z",
                 serde_json::json!({
                     "type": "item_completed", "item": {
                         "type": "CommandExecution", "id": id, "command": ["/bin/zsh", "-lc", "same-command"],
-                        "cwd": "file:///repo/with%20space", "status": status, "aggregated_output": output,
+                        "cwd": workdir_url.as_str(), "status": status, "aggregated_output": output,
                         "exit_code": if status == "in_progress" { Value::Null } else { Value::from(0) },
                     }
                 }),
@@ -2488,7 +2490,7 @@ mod tests {
         assert_eq!(first.status.as_deref(), Some("completed"));
         assert_eq!(
             serde_json::from_str::<Value>(first.arguments.as_deref().unwrap()).unwrap()["workdir"],
-            "/repo/with space"
+            workdir.to_string_lossy().as_ref()
         );
         assert!(first.output.as_deref().unwrap().contains("complete"));
         assert!(!first.output.as_deref().unwrap().contains("partial"));
