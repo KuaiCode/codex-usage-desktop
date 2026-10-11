@@ -2,25 +2,8 @@
 
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { UsageTrendsCard, UsageTrendTooltip } from "./usage-trends-card";
-
-beforeAll(() => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    class ResizeObserver {
-      constructor(private callback: ResizeObserverCallback) {}
-      observe(target: Element) {
-        this.callback(
-          [{ target, contentRect: { width: 800, height: 300 } } as ResizeObserverEntry],
-          this as unknown as globalThis.ResizeObserver,
-        );
-      }
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-});
 
 describe("UsageTrendTooltip", () => {
   it("uses an opaque surface so dashboard content does not show through", () => {
@@ -43,9 +26,12 @@ describe("UsageTrendTooltip", () => {
   });
 
   it("keeps the chart tooltip above the summary metrics", () => {
+    const warn = vi.spyOn(console, "warn");
+    onTestFinished(() => warn.mockRestore());
     const { container } = render(<UsageTrendsCard daily={[]} metrics={[]} cacheHitRate={0} />);
 
     expect(container.querySelector(".recharts-tooltip-wrapper")).toHaveStyle({ zIndex: "10" });
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("shows only totals and cost in compact tooltips", () => {

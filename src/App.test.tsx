@@ -224,14 +224,6 @@ describe("App", () => {
     eventListeners.clear();
     document.body.style.overflow = "";
     vi.unstubAllGlobals();
-    vi.stubGlobal(
-      "ResizeObserver",
-      class ResizeObserver {
-        observe() {}
-        unobserve() {}
-        disconnect() {}
-      },
-    );
     writeTextMock.mockReset();
     vi.stubGlobal("navigator", { language: "en-US", clipboard: { writeText: writeTextMock } });
     void i18n.changeLanguage("en");
@@ -626,6 +618,7 @@ describe("App", () => {
 
   it("loads the last 30 day overview and switches to last 1 day", async () => {
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "scan_usage") {
         return { importedDays: 3, scannedAt: "2026-04-26T00:00:00.000Z", timezone: "UTC" };
       }
@@ -859,6 +852,7 @@ describe("App", () => {
     let resolve90DayOverview: (value: unknown) => void = () => {};
 
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "scan_usage") {
         return { importedDays: 3, scannedAt: "2026-04-26T00:00:00.000Z", timezone: "UTC" };
       }
@@ -943,6 +937,7 @@ describe("App", () => {
 
   it("loads monthly usage from the Monthly tab", async () => {
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "scan_usage") {
         return { importedDays: 3, scannedAt: "2026-05-11T00:00:00.000Z", timezone: "UTC" };
       }
@@ -1133,6 +1128,8 @@ describe("App", () => {
     expect(projectDialog.closest("[inert]")).toBeNull();
     const close = within(projectDialog).getByRole("button", { name: "Close project details" });
     expect(close).toHaveFocus();
+    await user.tab();
+    expect(within(projectDialog).getByRole("application")).toHaveFocus();
     await user.tab();
     const search = within(projectDialog).getByRole("textbox", { name: "Search project sessions" });
     expect(search).toHaveFocus();
@@ -1935,6 +1932,7 @@ describe("App", () => {
 
   it("keeps the cached overview visible when the background scan fails", async () => {
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "fetch_overview" && args?.range === "30d") {
         return {
           range: "30d",
@@ -1976,6 +1974,7 @@ describe("App", () => {
 
   it("keeps the dashboard visible when Codex limits are unavailable", async () => {
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "fetch_codex_limits") {
         throw "Codex CLI not found. Set CODEX_CLI_PATH or install the codex command.";
       }
@@ -2339,6 +2338,7 @@ describe("App", () => {
     const confirmMock = vi.fn(() => true);
     vi.stubGlobal("confirm", confirmMock);
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "reset_usage_state") {
         return undefined;
       }
@@ -2431,6 +2431,7 @@ describe("App", () => {
     const confirmMock = vi.fn(() => false);
     vi.stubGlobal("confirm", confirmMock);
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "scan_usage") {
         return { importedDays: 1, scannedAt: "2026-05-11T00:00:00.000Z", timezone: "UTC" };
       }
@@ -2478,6 +2479,7 @@ describe("App", () => {
   it("exports the selected range to Excel", async () => {
     saveMock.mockResolvedValue("/tmp/codex-usage-30d.xlsx");
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "scan_usage") {
         return { importedDays: 3, scannedAt: "2026-04-26T00:00:00.000Z", timezone: "UTC" };
       }
@@ -2559,6 +2561,7 @@ describe("App", () => {
   it("does not export when the save dialog is canceled", async () => {
     saveMock.mockResolvedValue(null);
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
+      if (command === "check_for_updates") return { hasUpdate: false };
       if (command === "scan_usage") {
         return { importedDays: 3, scannedAt: "2026-04-26T00:00:00.000Z", timezone: "UTC" };
       }
