@@ -577,13 +577,6 @@ function ActivityOutput({ text, expanded, tone }: { text: string; expanded: bool
   return <pre className={`mt-1 whitespace-pre-wrap break-words border-l border-border/60 pl-4 ${tone}`}>{`└ ${output}`}</pre>;
 }
 
-function ExecOutputMetadata({ output }: { output: ExecOutput }) {
-  const { t } = useTranslation();
-  return output.sessionId !== null
-    ? <div className="text-[11px] text-muted-foreground">{t("sessions.detail.process_session")}: {output.sessionId}</div>
-    : null;
-}
-
 function ExecResultItem({ output, index }: { output: ExecOutput; index: number }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -593,7 +586,6 @@ function ExecResultItem({ output, index }: { output: ExecOutput; index: number }
       <span className={failed ? "font-semibold text-error" : "font-semibold"}>{t("sessions.detail.output")} #{index + 1}</span>
       {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
     </button>
-    <ExecOutputMetadata output={output} />
     {output.stdout ? <ActivityOutput text={cleanExecOutput(output.stdout)} expanded={expanded} tone={failed ? "text-error" : "text-muted-foreground"} /> : null}
     {output.stderr ? <ActivityOutput text={output.stderr} expanded={expanded} tone="text-error" /> : null}
   </div>;
@@ -607,8 +599,6 @@ function NestedActivityItem({ activity }: { activity: NestedActivity }) {
     const text = [activity.output?.stdout, activity.output?.stderr].filter(Boolean).join("\n");
     return <div>
       <BackgroundTerminalItem input={activity.input} output={text || null} rawJsonl={[]} />
-      {activity.output?.sessionId == null ? <div className="text-[11px] text-muted-foreground">{t("sessions.detail.process_session")}: {activity.sessionId}</div> : null}
-      {activity.output ? <ExecOutputMetadata output={activity.output} /> : null}
     </div>;
   }
 
@@ -643,7 +633,6 @@ function NestedActivityItem({ activity }: { activity: NestedActivity }) {
       <span className="flex min-w-0 gap-1.5"><span className={failed ? "shrink-0 text-error" : "shrink-0 text-muted-foreground"}>•</span><span className="min-w-0 whitespace-pre-wrap break-words"><span className="font-semibold">{t(activity.status === "running" ? "sessions.detail.activity_running" : "sessions.detail.activity_ran")}</span> {expanded ? activity.command : buildCollapsedPreview(activity.command, 1)}</span></span>
       <span className="flex shrink-0 items-center gap-2 text-muted-foreground">{expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}</span>
     </button>
-    {activity.output ? <ExecOutputMetadata output={activity.output} /> : null}
     {stdout ? <ActivityOutput text={stdout} expanded={expanded} tone={failed ? "text-error" : "text-muted-foreground"} /> : null}
     {activity.output?.stderr ? <ActivityOutput text={activity.output.stderr} expanded={expanded} tone="text-error" /> : null}
   </div>;
@@ -823,7 +812,7 @@ function BackgroundTerminalItem({ input, output, tokenUsage, rawJsonl }: { input
 function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: ToolActivity; item: Extract<ReplayItem, { kind: "toolCall" }>; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
+  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
   const argumentsTitle = execArguments?.kind === "patch"
     ? t("sessions.detail.patch_input")
     : t(execArguments ? "sessions.detail.command" : "sessions.detail.arguments");
@@ -975,11 +964,6 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
           <div className="rounded-md border border-border/50 bg-muted/35 px-3 py-2 text-xs">
             <span className="font-semibold text-muted-foreground">{t("sessions.detail.working_directory")}: </span>
             <span className="break-all font-mono text-foreground">{execArguments.workdir}</span>
-          </div>
-        ) : null}
-        {execOutput && unpairedOutputs.length === 0 && execOutput.sessionId !== null ? (
-          <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-            {execOutput.sessionId !== null ? <span className="rounded-full border border-border/60 bg-background/60 px-2 py-1">{t("sessions.detail.process_session")}: {execOutput.sessionId}</span> : null}
           </div>
         ) : null}
         {unpairedOutputs.map((output, index) => <ExecResultItem key={index} output={output} index={index} />)}

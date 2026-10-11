@@ -75,8 +75,7 @@ it("renders the reported mapped orchestration as individual activities without i
   expect(screen.queryByText(/Script completed/)).not.toBeInTheDocument();
   expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
   expect(screen.getAllByRole("button", { name: /^Output #/ })).toHaveLength(5);
-  expect(screen.getByText("Process session: 85274")).toBeInTheDocument();
-  expect(screen.getByText("Process session: 25450")).toBeInTheDocument();
+  expect(screen.queryByText(/Process session:/)).not.toBeInTheDocument();
   const failed = screen.getByRole("button", { name: "Output #4" });
   expect(failed.parentElement).toHaveClass("border-error/40");
   const first = screen.getByRole("button", { name: "Output #1" });
