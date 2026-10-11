@@ -1,4 +1,8 @@
 {
+  "3.15.0": {
+    "zh": "- chore(homebrew): update cask to 3.14.2\n- fix: preserve command responses in session details\n- fix(replay): preserve orchestration results and prevent incorrect pairing\n- fix: simplify session command activity display\n- fix(replay): pair command outputs using native execution records\n- fix(replay): remove process session labels\n- fix(replay): render clock sleep as waiting activities",
+    "en": "- chore(homebrew): update cask to 3.14.2\n- fix: preserve command responses in session details\n- fix(replay): preserve orchestration results and prevent incorrect pairing\n- fix: simplify session command activity display\n- fix(replay): pair command outputs using native execution records\n- fix(replay): remove process session labels\n- fix(replay): render clock sleep as waiting activities"
+  },
   "3.14.2": {
     "zh": "- chore(homebrew): update cask to 3.13.2\n- feat: add targeted session and project refresh\n- fix: align modal refresh buttons with dashboard style\n- fix(projects): move daily quota summary into date header\n- fix(e2e): preserve quota layout execute result types\n- fix(tests): use native paths in scoped scanner fixtures",
     "en": "- chore(homebrew): update cask to 3.13.2\n- feat: add targeted session and project refresh\n- fix: align modal refresh buttons with dashboard style\n- fix(projects): move daily quota summary into date header\n- fix(e2e): preserve quota layout execute result types\n- fix(tests): use native paths in scoped scanner fixtures"
