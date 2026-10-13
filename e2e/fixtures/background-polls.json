@@ -1,0 +1,94 @@
+[
+  {
+    "timestamp": "2026-10-13T07:37:59.881Z",
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call",
+      "id": "ctc_046e220c40dc898e016acddfd71074819baef282f48a238272",
+      "status": "completed",
+      "call_id": "call_ef4bc174747b45b593c1bbe6ac39bc13",
+      "name": "exec",
+      "input": "text(await tools.write_stdin({session_id:5905,chars:\"\",yield_time_ms:1000,max_output_tokens:4000}));\ntext(await tools.write_stdin({session_id:81206,chars:\"\",yield_time_ms:1000,max_output_tokens:4000}));\n",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a1342c-17b5-7252-b671-20e21113e4c7",
+        "create_time": 1791877079.0675087
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-13T07:38:07.685Z",
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call_output",
+      "id": "ctco_01a13432-81c5-7262-a942-79bae54bef5a",
+      "call_id": "call_ef4bc174747b45b593c1bbe6ac39bc13",
+      "output": [
+        {
+          "type": "input_text",
+          "text": "Script completed\nWall time 7.8 seconds\nOutput:\n"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"019822\",\"wall_time_seconds\":2.784109305,\"exit_code\":1,\"original_token_count\":1423,\"output\":\"\\n RUN  v3.2.7 /Users/vincent/Documents/Develop/github/taskmate\\n\\n ❯ src/components/MarkdownEditor.test.tsx (55 tests | 2 failed) 7949ms\\n   ✓ MarkdownEditor > uses a 14px document font size  430ms\\n   ✓ MarkdownEditor > styles fenced code as a GitHub-like code block 128ms\\n   ✓ MarkdownEditor > loads syntax highlighting inside fenced code 111ms\\n   ✓ MarkdownEditor > syncs a changed value without reporting a user edit 169ms\\n   ✓ MarkdownEditor > reports ordinary editor transactions 206ms\\n   × MarkdownEditor > clears a selection on an orphan mouseup (source mode: false) 148ms\\n     → expected false to be true // Object.is equality\\n   × MarkdownEditor > clears a selection on an orphan mouseup (source mode: true) 91ms\\n     → expected false to be true // Object.is equality\\n   ✓ MarkdownEditor > preserves a normal text drag when its mouseup is outside the selected range 78ms\\n   ✓ MarkdownEditor > preserves selections on mouseup with 2/undefined and modifiers 88ms\\n   ✓ MarkdownEditor > preserves selections on mouseup with +0/undefined and modifiers 91ms\\n   ✓ MarkdownEditor > preserves selections on mouseup with +0/undefined and modifiers 77ms\\n   ✓ MarkdownEditor > preserves selections on mouseup with +0/undefined and modifiers 112ms\\n   ✓ MarkdownEditor > preserves selections on mouseup with +0/undefined and modifiers 96ms\\n   ✓ MarkdownEditor > preserves selections on mouseup with +0/2 and modifiers 116ms\\n   ✓ MarkdownEditor > preserves a selection when an orphan mouseup lands inside it 88ms\\n   ✓ MarkdownEditor > ignores save echoes and preserves history when preview mode changes 147ms\\n   ✓ MarkdownEditor > creates a fresh history for a different document identity 127ms\\n   ✓ MarkdownEditor > pastes Unicode and multiline Markdown and preserves undo/redo 157ms\\n   ✓ MarkdownEditor > opens find and replace from the toolbar  374ms\\n   ✓ MarkdownEditor > opens find and replace with Mod+F and replaces all matches  331ms\\n   ✓ MarkdownEditor > keeps Mod+F reserved for search when stored formatting shortcuts conflict 129ms\\n   ✓ MarkdownEditor > reports task checkbox clicks as document changes 87ms\\n   ✓ MarkdownEditor > shows raw Markdown when source mode is enabled 97ms\\n   ✓ MarkdownEditor > opens links without entering edit mode using the platform modifier on MacIntel 80ms\\n   ✓ MarkdownEditor > opens links without entering edit mode using the platform modifier on Win32 71ms\\n   ✓ MarkdownEditor > navigates fragments locally with the modifier on MacIntel 244ms\\n   ✓ MarkdownEditor > navigates fragments locally with the modifier on Win32  394ms\\n   ✓ MarkdownEditor > navigates source-mode fragments through the editor event handler  354ms\\n   ✓ MarkdownEditor > keeps malformed and missing fragments away from the external opener 136ms\\n   ✓ MarkdownEditor > keeps ordinary link clicks in the editor 246ms\\n   ✓ MarkdownEditor > shows a link cursor only while the platform modifier is pressed 212ms\\n   ✓ MarkdownEditor > reports failures to open external links 165ms\\n   ✓ MarkdownEditor > renders checked task items without crashing 256ms\\n   ✓ MarkdownEditor > applies the default Mod+b shortcut 112ms\\n   ✓ MarkdownEditor > applies the default Mod+i shortcut 108ms\\n   ✓ MarkdownEditor > applies the default Mod+k shortcut 103ms\\n   ✓ MarkdownEditor > applies the default Mod+l shortcut 80ms\\n   ✓ MarkdownEditor > applies a custom shortcut for h1 95ms\\n   ✓ MarkdownEditor > applies a custom shortcut for h2 75ms\\n   ✓ MarkdownEditor > applies a custom shortcut for bold 85ms\\n   ✓ MarkdownEditor > applies a custom shortcut for italic 68ms\\n   ✓ MarkdownEditor > applies a custom shortcut for strike 124ms\\n   ✓ MarkdownEditor > applies a custom shortcut for inlineCode 77ms\\n   ✓ MarkdownEditor > applies a custom shortcut for codeBlock 83ms\\n   ✓ MarkdownEditor > applies a custom shortcut for quote 77ms\\n   ✓ MarkdownEditor > applies a custom shortcut for bullet 79ms\\n   ✓ MarkdownEditor > applies a custom shortcut for ordered 71ms\\n   ✓ MarkdownEditor > applies a custom shortcut for task 67ms\\n   ✓ MarkdownEditor > applies a custom shortcut for link 62ms\\n   ✓ MarkdownEditor > applies a custom shortcut for image 65ms\\n   ✓ MarkdownEditor > applies a custom shortcut for rule 69ms\\n   ✓ MarkdownEditor > applies macOS Option shortcuts using the physical key code 61ms\\n   ✓ MarkdownEditor > replaces the old shortcut and removes a cleared shortcut 138ms\\n   ✓ MarkdownEditor > keeps toolbar labels and aria shortcuts in sync  534ms\\n   ✓ MarkdownEditor > preserves Tab indentation and undo 70ms\\n\\n⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯\\n\\n FAIL  src/components/MarkdownEditor.test.tsx > MarkdownEditor > clears a selection on an orphan mouseup (source mode: false)\\n FAIL  src/components/MarkdownEditor.test.tsx > MarkdownEditor > clears a selection on an orphan mouseup (source mode: true)\\nAssertionError: expected false to be true // Object.is equality\\n\\n- Expected\\n+ Received\\n\\n- true\\n+ false\\n\\n ❯ src/components/MarkdownEditor.test.tsx:76:45\\n     74|     fireEvent.mouseUp(view.contentDOM, { button: 0, detail: 1, clientX…\\n     75| \\n     76|     expect(view.state.selection.main.empty).toBe(true);\\n       |                                             ^\\n     77|     expect(view.state.selection.main.head).toBe(16);\\n     78|     expect(view.hasFocus).toBe(true);\\n\\n⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯\\n\\n\\n Test Files  1 failed (1)\\n      Tests  2 failed | 53 passed (55)\\n   Start at  15:37:49\\n   Duration  12.75s (transform 470ms, setup 562ms, collect 1.15s, tests 7.95s, environment 1.69s, prepare 331ms)\\n\\n\"}"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"594dab\",\"wall_time_seconds\":5.001095766,\"session_id\":81206,\"original_token_count\":201,\"output\":\"2026-10-13T07:37:52.098Z INFO tauri-service:launcher: Using embedded WebDriver provider (tauri-plugin-wdio-webdriver) - no external driver needed\\n2026-10-13T07:37:52.103Z INFO tauri-service:launcher: Embedded provider mode - spawning Tauri app with embedded WebDriver server\\n2026-10-13T07:37:52.109Z INFO tauri-service:launcher: Tauri app spawned (PID: 39321)\\n2026-10-13T07:37:58.271Z INFO tauri-service:launcher: WebDriver server ready on port 4445\\n\\nExecution of 1 workers started at 2026-10-13T07:37:59.275Z\\n\\n2026-10-13T07:37:59.283Z INFO tauri-service: Running Tauri environment diagnostics...\\n2026-10-13T07:37:59.325Z INFO tauri-service: Diagnostics complete\\n\\n2026-10-13T07:37:59.325Z INFO diagnostics: Diagnostics: 6 checks passed\\n[0-0] RUNNING in undefined - file:///e2e/editor-window-drag.spec.ts\\n\"}"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a1342c-17b5-7252-b671-20e21113e4c7",
+        "create_time": 1791877087.685371
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-13T07:38:07.689Z",
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 1339067,
+          "cached_input_tokens": 1247616,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 7707,
+          "reasoning_output_tokens": 2438,
+          "total_tokens": 1346774
+        },
+        "last_token_usage": {
+          "input_tokens": 95689,
+          "cached_input_tokens": 94336,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 175,
+          "reasoning_output_tokens": 36,
+          "total_tokens": 95864
+        },
+        "model_context_window": 475000
+      },
+      "rate_limits": {
+        "limit_id": "codex",
+        "limit_name": null,
+        "primary": {
+          "used_percent": 6.0,
+          "window_minutes": 300,
+          "resets_at": 1791885471
+        },
+        "secondary": {
+          "used_percent": 1.0,
+          "window_minutes": 10080,
+          "resets_at": 1792472271
+        },
+        "credits": {
+          "has_credits": false,
+          "unlimited": false,
+          "balance": null
+        },
+        "individual_limit": null,
+        "spend_control_reached": null,
+        "plan_type": "team",
+        "rate_limit_reached_type": null
+      }
+    }
+  }
+]

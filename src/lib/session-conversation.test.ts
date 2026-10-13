@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildConversation, buildSessionConversation, classifyExploration, parseToolContentBlocks, summarizeOutput, type ReplayItem } from "./session-conversation";
 import type { SessionReplayDetail } from "./api";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
+import backgroundPolls from "../../e2e/fixtures/background-polls.json";
 
 function replayTurn(items: ReplayItem[]): SessionReplayDetail["turns"][number] {
   return { turnId: "1", startedAt: null, completedAt: null, durationMs: null, systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [], toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items };
@@ -14,6 +15,30 @@ function usage(totalTokens: number): ReplayItem {
 }
 
 describe("conversation projection", () => {
+  it("pairs the reported sequential background polls without adopting either process state", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: backgroundPolls[0].payload.input!, output: JSON.stringify(backgroundPolls[1].payload.output),
+    }), usage(95864)]))[0];
+    if (block.kind !== "item") throw new Error("Expected poll batch");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "terminal", sessionId: 5905, input: "", output: { exitCode: 1, sessionId: null, stdout: expect.stringContaining("2 failed | 53 passed") } },
+      { kind: "terminal", sessionId: 81206, input: "", output: { exitCode: null, sessionId: 81206, stdout: expect.stringContaining("editor-window-drag.spec.ts") } },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+    expect(block.entry.activity?.unparsedOutputText).toBeNull();
+    expect(block.entry.tokenUsage?.totalTokens).toBe(95864);
+  });
+
+  it("keeps incomplete sequential poll responses unpaired", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: backgroundPolls[0].payload.input!,
+      output: JSON.stringify([{ type: "input_text", text: '{"exit_code":1,"output":"unknown poll"}' }]),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected poll batch");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([{ output: null }, { output: null }]);
+    expect(block.entry.activity?.unpairedOutputs[0].stdout).toBe("unknown poll");
+  });
+
   it.each([
     ["Wall time: 20.0673 seconds\nSleep completed.", "completed", false, "completed"],
     ["Wall time: 3.1 seconds\nSleep interrupted by new input.", "completed", false, "interrupted"],

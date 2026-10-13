@@ -9,6 +9,47 @@ import { ConversationItem } from "./session-detail-modal";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 import structuredCommands from "../../e2e/fixtures/structured-command-responses.json";
 import clockSleep from "../../e2e/fixtures/clock-sleep.json";
+import backgroundPolls from "../../e2e/fixtures/background-polls.json";
+
+it("renders the reported poll batch as separate failed and running waits with complete output", async () => {
+  await i18n.changeLanguage("en");
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "polls", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: backgroundPolls[0].payload.call_id!, name: "exec", status: "completed",
+      arguments: backgroundPolls[0].payload.input!, output: JSON.stringify(backgroundPolls[1].payload.output),
+      stderr: null, startedAt: null, completedAt: null, durationMs: 7804, isError: false, rawJsonlLineNumbers: [1, 2],
+    }, {
+      kind: "tokenUsage", timestamp: null, model: "gpt-6", inputTokens: 95689, cachedInputTokens: 94336,
+      outputTokens: 175, reasoningOutputTokens: 36, totalTokens: 95864, rawJsonlLineNumbers: [3],
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={backgroundPolls.map((record) => JSON.stringify(record))} />);
+  const waits = screen.getAllByRole("button", { name: /Waited for background terminal/ });
+  expect(waits).toHaveLength(2);
+  expect(waits[0]).toHaveTextContent("Failed");
+  expect(waits[0].parentElement).toHaveClass("border-error/40");
+  expect(waits[1]).toHaveTextContent("Running");
+  expect(waits[1].parentElement).not.toHaveClass("border-error/40");
+  expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
+  expect(document.body).not.toHaveTextContent("write_stdin");
+  expect(document.body).not.toHaveTextContent("81206");
+  expect(screen.queryByRole("button", { name: /Output #/ })).not.toBeInTheDocument();
+  for (const [index, wait] of waits.entries()) {
+    expect(wait).toHaveAttribute("aria-expanded", "false");
+    expect(wait.parentElement?.querySelector("pre")).toBeNull();
+    await userEvent.click(wait);
+    const output = JSON.parse(backgroundPolls[1].payload.output![index + 1].text).output;
+    expect(wait.parentElement?.querySelector("pre")?.textContent).toBe(`└ ${output.trim()}`);
+  }
+  expect(waits[0].parentElement?.textContent).not.toContain("editor-window-drag.spec.ts");
+  expect(waits[1].parentElement?.textContent).not.toContain("MarkdownEditor.test.tsx");
+  await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
+  const raw = screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.querySelector("pre")?.textContent;
+  expect(raw).toContain('"type":"custom_tool_call_output"');
+  expect(raw).toContain('"type":"token_count"');
+});
 
 it("collapses the reported clock.sleep activity while keeping tokens, complete output and raw provenance", async () => {
   await i18n.changeLanguage("en");

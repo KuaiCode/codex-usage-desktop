@@ -482,7 +482,7 @@ function parseNestedActivities(value: string | null, output: string | null) {
   const { calls, dynamic } = scanToolScript(value);
   if (dynamic || calls.some((call) => !["exec_command", "write_stdin", "apply_patch", "view_image"].includes(call.name))
     || calls.filter((call) => call.name === "view_image").length > 1
-    || (!parallel && !calls.some((call) => call.name !== "write_stdin"))
+    || (!parallel && calls.length === 1 && calls[0].name === "write_stdin")
     || (!parallel && calls.length === 1 && calls[0].name === "exec_command")) return null;
   const content = parseToolContentBlocks(output);
   const { results: execResults, outputs, allIndexed, duplicateIndices, unparsedOutputText } = execResultsFromContent(content, output);
