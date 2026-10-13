@@ -1,0 +1,101 @@
+[
+  {
+    "timestamp": "2026-10-13T07:34:58.007Z",
+    "ordinal": 116,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call",
+      "id": "ctc_046e220c40dc898e016acddf1ee12c819b875133fba43c23dd",
+      "status": "completed",
+      "call_id": "call_669e0a4a032f45189bf0c425f7dd37b7",
+      "name": "exec",
+      "input": "text(await tools.web__run({search_query:[{q:'tauri macos startDragging text selection click after dragging window webview'},{q:'WKWebView performWindowDragWithEvent selection mouseDown mouseUp'}],response_length:\"short\"}));\ntext(await tools.write_stdin({session_id:81206,chars:\"\",yield_time_ms:1000,max_output_tokens:2500}));\n",
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a1342c-17b5-7252-b671-20e21113e4c7",
+        "create_time": 1791876894.952824
+      }
+    }
+  },
+  {
+    "timestamp": "2026-10-13T07:35:06.450Z",
+    "ordinal": 119,
+    "type": "response_item",
+    "payload": {
+      "type": "custom_tool_call_output",
+      "id": "ctco_01a1342f-bdd2-7192-be51-94ec568f45c5",
+      "call_id": "call_669e0a4a032f45189bf0c425f7dd37b7",
+      "output": [
+        {
+          "type": "input_text",
+          "text": "Script completed\nWall time 8.4 seconds\nOutput:\n"
+        },
+        {
+          "type": "input_text",
+          "text": "performWindowDragWithEvent: | Apple Developer Documentation (https://developer.apple.com/documentation/appkit/nswindow/performdrag%28with%3A%29?language=objc)\nciteturn0search0 [wordlim: 200] Crawled: 3 months ago; # performWindowDragWithEvent: ...     `- (void) performWindowDragWithEvent:(`NSEvent` *) event;` ... This method returns right away, and a mouse-up event may not get sent.\n--------------------------------------------------------------------------------\ntauri/packages/api/src/webview.ts at dev · tauri-apps/tauri · GitHub (https://github.com/tauri-apps/tauri/blob/dev/packages/api/src/webview.ts)\nciteturn0search1 [wordlim: 200] Crawled: yesterday; __TAURI__.webview` when [`app.withGlobalTauri`](https://v2.tauri.app/reference/config/#withglobaltauri) in `tauri.conf.json` is set to `true`. ... * - `over`: the cursor moved while dragging; only `position` changes. ... const unlistenDragEnter = await this.listen<DragPayload>( ... * - data: URL such as `data:text/html,<html>...` is only supported with the `webview-data-url` Cargo feature for the `tauri` dependency.* - local file path or route such as `/path/to/page.html` or `/users` is appended to the application URL (the devServer URL on development, or `tauri://localhost/` and `https://tauri.localhost/` on production). ... * - **MacOS / Linux**: Injects a polyfill that zooms in and out with `ctrl/command` + `-/=`, ... * - Android: Open `chrome://inspect/#devices` in Chrome to get the devtools window. ... * the whole tab (view) to free resources after roughly 5 minutes when a view became\n--------------------------------------------------------------------------------\nwebviewWindow | Tauri (https://tauri.app/reference/javascript/api/namespacewebviewwindow/)\nciteturn0search2 [wordlim: 200] Crawled: today; | `Webview`.`label`  | Source: https://github.com/tauri-apps/tauri/blob/dev/packages/api/src/webviewWindow.ts#L86 ... Use this to tell windows apart from native code, or to match a window with the activity declared in your `AndroidManifest.xml`. ...   * Windows / Linux / macOS / iOS: Unsupported, the call rejects because the command is not registered. ...     await getCurrentWindow().startDragging();\n--------------------------------------------------------------------------------\nswift - How can I move the window without titleBar and fully filled with webView? - Stack Overflow (https://stackoverflow.com/questions/41286599/how-can-i-move-the-window-without-titlebar-and-fully-filled-with-webview)\nciteturn0search3 [wordlim: 200] Published: 9.8 years ago; Crawled: 3 months ago; You can subclass the webview to catch `-mouseDown:` events, and then pass the NSEvent to `-[NSWindow performWindowDragWithEvent:]`.Apple has sample code which uses this technique to start a window drag after the mouse moves some minimum distance, while still handling normal clicks. ... (Overriding `-mouseDown:` seems to work for WKWebView, it may not work with the legacy WebView.\n--------------------------------------------------------------------------------\n[bug] Dragging window causes focus toggling, plus eats mouse event(s) · Issue #10767 · tauri-apps/tauri · GitHub (https://github.com/tauri-apps/tauri/issues/10767)\nciteturn0search4 [wordlim: 200] Published: 2.1 years ago; Crawled: 2 months ago; On Windows, clicking any draggable region within a Tauri window causes a toggling of window focus and the loss of certain mouse events as observed by the webview. ... (If you double-click instead of single clicking, then the second mouse up event will be visible: but this is only because it triggers the window maximize handler instead of the drag start handler.) ...   * Green indicates messages that were sent after clicking down with the left mouse button. ... Create a minimal Tauri program using `create-tauri-app`: ...     label.textContent = 'Drag anywhere in the grey region to move the window.'\n--------------------------------------------------------------------------------\ncocoa - Moving borderless NSWindow fully covered with Web View - Stack Overflow (https://stackoverflow.com/questions/7287696/moving-borderless-nswindow-fully-covered-with-web-view/54987061)\nciteturn0search5 [wordlim: 200] Published: 15.1 years ago; Crawled: 3 months ago;     public override void MouseDown(NSEvent theEvent) ...     public override void MouseUp(NSEvent theEvent) ... @starkos porvided the correct answer at https://stackoverflow.com/a/54987061/140927 The following is just the ObjC implementation in a subclass of WKWebView: ...             [self.window performWindowDragWithEvent:event];\n--------------------------------------------------------------------------------\ntauri-docs/src/content/docs/learn/window-customization.mdx at v2 · tauri-apps/tauri-docs · GitHub (https://github.com/tauri-apps/tauri-docs/blob/v2/src/content/docs/learn/window-customization.mdx)\nciteturn0search6 [wordlim: 200] Crawled: 4 weeks ago;       ?.addEventListener('click', () => appWindow.minimize()); ... For use cases where you customize the drag behavior, you can manually add an event listener with `window.startDragging` instead of using `data-tauri-drag-region`. ...           : appWindow.startDragging(); // Else start dragging ... Add `objc2-app-kit` crate to dependencies so that we can use it to call the macOS native API: ...     use tauri::{TitleBarStyle, WebviewUrl, WebviewWindowBuilder};\n--------------------------------------------------------------------------------\n[bug] command shortcuts on macos webview · Issue #8676 · tauri-apps/tauri · GitHub (https://github.com/tauri-apps/tauri/issues/8676)\nciteturn0search7 [wordlim: 200] Published: 2.7 years ago; Crawled: last month; When using `multiwebview` example on `MacOS`, I can't select / copy / paste text with `command + c` or `command + v` etc...it works only if the parent window in focus but not the webview ...     git clone https://github.com/tauri-apps/tauri ...         ✔ Rust toolchain: stable-aarch64-apple-darwin (environment override by RUSTUP_TOOLCHAIN) ...     [-] App\n--------------------------------------------------------------------------------\nSource/WebKit/UIProcess/mac/WebViewImpl.mm - external/github.com/WebKit/webkit - Git at Google (https://chromium.googlesource.com/external/github.com/WebKit/webkit/%2B/0d38c8510a6ac78bd7390c26c6b61770df090aea/Source/WebKit/UIProcess/mac/WebViewImpl.mm)\nciteturn0search8 [wordlim: 200] Crawled: today;  | [[m_view window] performWindowDragWithEvent:m_lastMouseDownEvent.get()]; ...  | void WebViewImpl::rightMouseUp(NSEvent *event) ...  | void WebViewImpl::mouseDownInternal(NSEvent *event)\n--------------------------------------------------------------------------------\n[bug] Unmaximize window by double clicking data-tauri-drag-region does not resize correctly · Issue #11945 · tauri-apps/tauri (https://github.com/tauri-apps/tauri/issues/11945)\nciteturn0search9 [wordlim: 200] Published: 1.8 years ago; Crawled: 4 months ago;           // macOS maximization happens on `mouseup`, ...           // prevents text cursor ...         // the problem is here, since window is in dragging mode, it does not emit events to webview. after we release left mouse button and click anywhere, it will trigger mouseup event. ... Issue was when you click on data-tauri-drag-region once, window will minimize and keep ~maximum width/height.\n--------------------------------------------------------------------------------\nWebKit/Tools/WebKitTestRunner/mac/EventSenderProxy.mm at main · WebKit/WebKit · GitHub (https://github.com/WebKit/webkit/blob/main/Tools/WebKitTestRunner/mac/EventSenderProxy.mm)\nciteturn0search10 [wordlim: 200] Crawled: 3 weeks ago; void EventSenderProxy::mouseUp(unsigned buttonNumber, WKEventModifiers modifiers, WKStringRef pointerType, CompletionHandler<void()>&& completionHandler) ... NSEvent *event = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDown ... windowNumber:[m_testController->mainWebView()->platformWindow() windowNumber] ... // For non-drag moves, _simulateMouseMove: must be called on the WKWebView directly\n--------------------------------------------------------------------------------\nobjective c - Allow click and dragging a view to drag the window itself? - Stack Overflow (https://stackoverflow.com/questions/4563893/allow-click-and-dragging-a-view-to-drag-the-window-itself)\nciteturn0search11 [wordlim: 200] Published: 15.8 years ago; Crawled: last month; As suspected, invalidating the \"initialLocation\" variable in the mouseUp: event (just by setting the y position to a negative number), then adding a guard clause to mouseDragged: fixes the bug. ... As of macOS 10.11, the simplest way to do this is to utilize the new `-[NSWindow performWindowDragWithEvent:]` method: ...     - (BOOL)mouseDownCanMoveWindow\n--------------------------------------------------------------------------------\nRetest Report (https://fossies.org/linux/tauri/audits/Radically_Open_Security-v1-report.pdf)\nciteturn0search12 [wordlim: 200] Published: 11 months ago;           WindowManagerCmd::StartDragging => window.start_dragging()?, ...         // would be great if we can have a handler inside tauri ... Relevant other sections are the webview clipboard functionality, which is always enabled, and allows grabbing the ...     let mut clipboard = window.app_handle.clipboard_manager();\n--------------------------------------------------------------------------------\nFile drag n drop (https://www.reddit.com/r/tauri/comments/1kswzv0)\nciteturn0reddit13 [wordlim: 200] Published: 1.4 years ago; Crawled: 1.3 years ago; Is it possible to drag n drop file from pc to tauri window. ... But if you aren't using the Tauri API to handle the event, you will need to set `dragDropEnabled = false` on the Tauri config to pass the event to the WebView.\n--------------------------------------------------------------------------------\nCustom React Select inside Tauri titlebar receives no click events (https://www.reddit.com/r/tauri/comments/1vh576m/custom_react_select_inside_tauri_titlebar/)\nciteturn0reddit14 [wordlim: 200] Published: 2 months ago; I'm using `data-tauri-drag-region` for window dragging. ...         u/apply bg-black text-white; ...       const handleVerifyClick = async () => { ... first thing to rule out is the drag region, because app-region: drag hands that area to the OS window manager and the mouse events stop reaching the dom under it. 30 second test: leave the data-tauri-drag-region attributes exactly where they are and comment out the app-region: drag line. if clicks come back, thats your answer. ... [data-tauri-drag-region] button { app-region: no-drag; }\n--------------------------------------------------------------------------------\nSafari Web Content (https://citeseerx.ist.psu.edu/document?doi=0aff17d267368002d63c212270dad248685371ae&repid=rep1&type=pdf)\nciteturn0search15 [wordlim: 200] Published: 8 months ago; Event drag | Generated No | Conditional N/A ... Event mousedown | Generated Yes | Conditional YesEvent mouseup | Generated Yes | Conditional Yes ... Event selection | Generated No | Conditional N/A\n--------------------------------------------------------------------------------\nWKWebView lasted a form. It did not last a terminal. Same UI, four hours later I could copy the text and not read it. (https://www.reddit.com/r/tauri/comments/1w95n4s/wkwebview_lasted_a_form_it_did_not_last_a/)\nciteturn0reddit16 [wordlim: 200] Published: last month; Crawled: last month; On Mac, Tauri is WKWebView.After hours of painting a cell grid the glyphs corrupted. ... That is the editor, not the running app.\n--------------------------------------------------------------------------------\nTauri is hard to use (https://www.reddit.com/r/tauri/comments/1gbjsba)\nciteturn0reddit17 [wordlim: 200] Published: 2.0 years ago; Crawled: 1.7 years ago; U want to make a webview transparent and able to click through the transparent part and simulate click on windows below transparent window? ... But in the repo you suggest, frontend invoked background rust command of `set_ignore_click_events()`, which I just tried  and got the click through effect, but only for main window, the webview still can't click through. ...   `import { appWindow, WebviewWindow } from \"@tauri-apps/api/window\";`\n--------------------------------------------------------------------------------\n1328  \nCHAPTER 18. WEBKIT2\n\n**18.1.84  MouseDown(x (https://www.monkeybreadsoftware.de/xojo/download/plugin/PDF/MBS%20Mac64bit%20Plugin.pdf)\nciteturn0search18 [wordlim: 200] Published: 7 months ago; **Notes:** The coordinates x and y are local to the control, i.e. they represent the position of the mouse click relative to the upper-left corner or the Control. ... - You will receive the MouseDrag and MouseUp events. ... **18.1.87  navigationActionDidBecomeDownload(navigationAction as WKNavigationActionMBS, download as WKDownloadMBS)**\n--------------------------------------------------------------------------------\nJust experimenting Interactive fluid UI in Tauri (https://www.reddit.com/r/tauri/comments/1t88yco/just_experimenting_interactive_fluid_ui_in_tauri/)\nciteturn0reddit19 [wordlim: 200] Published: 5 months ago; Is there a native way in Tauri to make transparent pixels click-through on Windows? ... Even the Android apps I used to run 8 or 9 years ago were so optimized and good looking, packed with awesome animations that ran perfectly even on low spec devices ... Because the actual Tauri window here is an invisible 1650x1200 box (to give the shaders room to stretch while dragging), the transparent padding around the app blocks clicks to the desktop apps behind it on Windows. ... wow this feels like a After Effects video ❤️ great UI\n--------------------------------------------------------------------------------\nHow hard is it to make a Tauri app look native on macOS? (https://www.reddit.com/r/tauri/comments/1vlflf6/how_hard_is_it_to_make_a_tauri_app_look_native_on/)\nciteturn0reddit20 [wordlim: 200] Published: 2 months ago; If you want to build a polished macOS app with Tauri, there is one tradeoff worth knowing early: Tauri gives you a webview, not a library of native UI components. ... I only reached for Swift and AppKit when macOS behavior itself became part of the feature, such as window levels, transparent overlays and system font metrics. ... I’m working on 2 Tauri apps and would love to make it look more Mac like or Adobe, but don’t want to use adobe spectrum. ... I analyzed apps built using glaze, it's using tailwind and it achieves liquid glass with `-apple-visual-effect` that's shipped with WebKit.\n--------------------------------------------------------------------------------\nHow to implement a custom context menu (https://www.reddit.com/r/tauri/comments/1wh088y/how_to_implement_a_custom_context_menu/)\nciteturn0reddit21 [wordlim: 200] Published: 3 weeks ago; In one of the apps I've been working on the context menus are part of the WebView as a React component.Then I could reuse it wherever I needed a context menu and it fit my app's styles and iconography ...   I have to check the selected text with selection api and then copy it to clipboard. ...   In electron there is webContents.copy() but tauri doesn't offer similar thing\n--------------------------------------------------------------------------------\n5\n\n* 6.2.33 magnifyWithEvent(e as NSEventMBS) as b (https://www.monkeybreadsoftware.de/xojo/download/plugin/PDF/MBS%20CocoaControls%20Plugin.pdf)\nciteturn0search22 [wordlim: 200] Published: 9.2 years ago; * 6.2.35 mouseDown(e as NSEventMBS, x as Double, y as Double) as boolean 199* 6.2.36 mouseDownCanMoveWindow as boolean 199 ... * 6.2.41 mouseUp(e as NSEventMBS, x as Double, y as Double) as boolean 200 ... * 6.2.46 performDragOperation(sender as NSDraggingInfoMBS) as boolean 201\n"
+        },
+        {
+          "type": "input_text",
+          "text": "{\"chunk_id\":\"155d95\",\"wall_time_seconds\":5.002643497,\"session_id\":81206,\"original_token_count\":0,\"output\":\"\"}"
+        }
+      ],
+      "internal_chat_message_metadata_passthrough": {
+        "turn_id": "01a1342c-17b5-7252-b671-20e21113e4c7",
+        "create_time": 1791876906.450854
+      }
+    },
+    "metadata": {
+      "client_authored": false,
+      "fallback_token_limit_override": 12000
+    }
+  },
+  {
+    "timestamp": "2026-10-13T07:35:06.453Z",
+    "ordinal": 120,
+    "type": "event_msg",
+    "payload": {
+      "type": "token_count",
+      "info": {
+        "total_token_usage": {
+          "input_tokens": 793439,
+          "cached_input_tokens": 722048,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 3957,
+          "reasoning_output_tokens": 775,
+          "total_tokens": 797396
+        },
+        "last_token_usage": {
+          "input_tokens": 76758,
+          "cached_input_tokens": 75392,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 317,
+          "reasoning_output_tokens": 224,
+          "total_tokens": 77075
+        },
+        "model_context_window": 475000
+      },
+      "rate_limits": {
+        "limit_id": "codex",
+        "limit_name": null,
+        "primary": {
+          "used_percent": 4.0,
+          "window_minutes": 300,
+          "resets_at": 1791885471
+        },
+        "secondary": {
+          "used_percent": 1.0,
+          "window_minutes": 10080,
+          "resets_at": 1792472271
+        },
+        "credits": {
+          "has_credits": false,
+          "unlimited": false,
+          "balance": null
+        },
+        "individual_limit": null,
+        "spend_control_reached": null,
+        "plan_type": "team",
+        "rate_limit_reached_type": null
+      }
+    }
+  }
+]

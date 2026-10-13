@@ -10,6 +10,46 @@ import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 import structuredCommands from "../../e2e/fixtures/structured-command-responses.json";
 import clockSleep from "../../e2e/fixtures/clock-sleep.json";
 import backgroundPolls from "../../e2e/fixtures/background-polls.json";
+import searchTerminal from "../../e2e/fixtures/search-terminal.json";
+
+it("renders the reported search and running terminal wait independently with one token badge", async () => {
+  await i18n.changeLanguage("en");
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "search-terminal", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: searchTerminal[0].payload.call_id!, name: "exec", status: "completed",
+      arguments: searchTerminal[0].payload.input!, output: JSON.stringify(searchTerminal[1].payload.output),
+      stderr: null, startedAt: null, completedAt: null, durationMs: 8400, isError: false, rawJsonlLineNumbers: [1, 2],
+    }, {
+      kind: "tokenUsage", timestamp: null, model: "gpt-6", inputTokens: 76758, cachedInputTokens: 75392,
+      outputTokens: 317, reasoningOutputTokens: 224, totalTokens: 77075, rawJsonlLineNumbers: [3],
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={searchTerminal.map((record) => JSON.stringify(record))} />);
+  const search = screen.getByRole("button", { name: /Searched the web for.*tauri macos/ });
+  const wait = screen.getByRole("button", { name: /Waited for background terminal.*Running/ });
+  expect(search).toHaveTextContent("WKWebView performWindowDragWithEvent selection mouseDown mouseUp");
+  expect(search).toHaveAttribute("aria-expanded", "false");
+  expect(wait).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
+  expect(document.body).not.toHaveTextContent("81206");
+  expect(document.body).not.toHaveTextContent("Script completed");
+  expect(screen.queryByRole("button", { name: /Output #/ })).not.toBeInTheDocument();
+  await userEvent.click(search);
+  expect(search.parentElement?.querySelectorAll("pre")).toHaveLength(23);
+  expect(search.parentElement?.textContent).toContain("performWindowDragWithEvent: | Apple Developer Documentation");
+  expect(search.parentElement?.textContent).not.toContain("session_id");
+  expect(wait).toHaveAttribute("aria-expanded", "false");
+  expect(wait).toBeDisabled();
+  expect(wait.parentElement?.querySelector("pre")).toBeNull();
+  expect(wait.parentElement?.textContent).not.toContain("Apple Developer Documentation");
+  await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
+  const raw = screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.querySelector("pre")?.textContent;
+  expect(raw).toContain('"type":"custom_tool_call_output"');
+  expect(raw).toContain('"session_id\\":81206');
+  expect(raw).toContain('"type":"token_count"');
+});
 
 it("renders the reported poll batch as separate failed and running waits with complete output", async () => {
   await i18n.changeLanguage("en");

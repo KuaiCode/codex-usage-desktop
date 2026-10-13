@@ -120,29 +120,40 @@ function parseNestedToolCall(value: string, toolName: string) {
   if (value[objectStart] !== "{") return null;
 
   let depth = 0;
-  let inString = false;
+  let quote: "\"" | "'" | null = null;
   let isEscaped = false;
   for (let index = objectStart; index < value.length; index += 1) {
     const character = value[index];
-    if (inString) {
+    if (quote) {
       if (isEscaped) {
         isEscaped = false;
       } else if (character === "\\") {
         isEscaped = true;
-      } else if (character === '"') {
-        inString = false;
+      } else if (character === quote) {
+        quote = null;
       }
       continue;
     }
 
-    if (character === '"') inString = true;
+    if (character === '"' || character === "'") quote = character;
     if (character === "{") depth += 1;
     if (character === "}") {
       depth -= 1;
       if (depth === 0) {
-        const objectLiteral = value.slice(objectStart, index + 1);
+        let objectLiteral = value.slice(objectStart, index + 1);
         const parsed = parseJsonObject(objectLiteral);
         if (parsed) return parsed;
+
+        // Convert single-quoted JS strings without evaluating the tool script.
+        try {
+          objectLiteral = objectLiteral.replace(/"(?:\\.|[^"\\])*"|'((?:\\.|[^'\\])*)'/gs, (literal, single: string | undefined) => {
+            if (single === undefined) return literal;
+            const json = single.replace(/\\.|"/gs, (character) => character === "\\'" ? "'" : character === '"' ? '\\"' : character);
+            return JSON.stringify(JSON.parse(`"${json}"`));
+          });
+        } catch {
+          return null;
+        }
 
         let normalized = "";
         let normalizedInString = false;
@@ -308,6 +319,7 @@ export function parseToolContentBlocks(value: string | null): ToolContentBlocks 
 export type NestedActivity =
   | { kind: "command"; command: string; workdir: string | null; output: ExecOutput | null; callId?: string | null; status?: string | null }
   | { kind: "terminal"; input: string; sessionId: string | number; output: ExecOutput | null }
+  | { kind: "webSearch"; queries: string[]; output: string | null }
   | { kind: "patch"; patch: string }
   | { kind: "image"; path: string; imageUrl: string | null };
 
@@ -479,17 +491,32 @@ function parseNestedActivities(value: string | null, output: string | null) {
   if (!value) return null;
   const parallel = parallelToolScript(value);
   value = parallel ?? value;
-  const { calls, dynamic } = scanToolScript(value);
-  if (dynamic || calls.some((call) => !["exec_command", "write_stdin", "apply_patch", "view_image"].includes(call.name))
+  const { calls, code, dynamic } = scanToolScript(value);
+  if (dynamic || calls.some((call) => !["exec_command", "write_stdin", "apply_patch", "view_image", "web__run"].includes(call.name))
     || calls.filter((call) => call.name === "view_image").length > 1
     || (!parallel && calls.length === 1 && calls[0].name === "write_stdin")
-    || (!parallel && calls.length === 1 && calls[0].name === "exec_command")) return null;
+    || (!parallel && calls.length === 1 && ["exec_command", "web__run"].includes(calls[0].name))) return null;
   const content = parseToolContentBlocks(output);
-  const { results: execResults, outputs, allIndexed, duplicateIndices, unparsedOutputText } = execResultsFromContent(content, output);
+  const hasSearch = calls.some((call) => call.name === "web__run");
+  const body = hasSearch ? content?.texts.map(cleanExecOutput).filter(Boolean) ?? [] : [];
+  let skeleton = code;
+  for (const call of hasSearch ? calls.toReversed() : []) {
+    const end = closingDelimiter(code, call.argumentStart - 1, "(", ")");
+    if (end < 0) return null;
+    skeleton = `${skeleton.slice(0, call.index)}CALL${skeleton.slice(end + 1)}`;
+  }
+  // Only pair mixed search/process blocks when each sequential call prints once.
+  const pairedSearch = hasSearch && !parallel && !content?.images.length && body.length === calls.length
+    && /^(?:\s*text\s*\(\s*await\s+CALL\s*\)\s*;?\s*)+$/.test(skeleton)
+    && calls.every((call, index) => call.name === "web__run"
+      ? !parseExecOutput(body[index]) : ["exec_command", "write_stdin"].includes(call.name) && parseExecOutput(body[index]) !== null);
+  const processContent = pairedSearch && content
+    ? { ...content, texts: body.filter((_, index) => calls[index].name !== "web__run") } : content;
+  const { results: execResults, outputs, allIndexed, duplicateIndices, unparsedOutputText } = execResultsFromContent(processContent, output);
   const processCount = calls.filter((call) => call.name === "exec_command" || call.name === "write_stdin").length;
   const emittedInOrder = calls.filter((call) => call.name === "exec_command" || call.name === "write_stdin")
     .every((call) => /\btext\s*\(\s*await\s*$/.test(value.slice(0, call.index)));
-  const canPairResults = !duplicateIndices && ((allIndexed && processCount === calls.length)
+  const canPairResults = (!hasSearch || pairedSearch) && !duplicateIndices && ((allIndexed && processCount === calls.length)
     || (!parallel && !allIndexed && emittedInOrder && execResults.size === processCount));
   const pairedResults = canPairResults ? execResults : new Map<number, ExecOutput | null>();
   let execIndex = 0;
@@ -508,6 +535,12 @@ function parseNestedActivities(value: string | null, output: string | null) {
       if (typeof parsed?.session_id !== "number" && typeof parsed?.session_id !== "string") return null;
       if (parsed.chars !== undefined && typeof parsed.chars !== "string") return null;
       activities.push({ kind: "terminal", input: typeof parsed.chars === "string" ? parsed.chars : "", sessionId: parsed.session_id, output: pairedResults.get(execIndex++) ?? null });
+    } else if (name === "web__run") {
+      const search = value.slice(callIndex);
+      const parsed = parseNestedToolCall(search, name);
+      const queries = parseWebSearchQueries(search);
+      if (!queries || !parsed || Object.keys(parsed).some((key) => !["search_query", "response_length"].includes(key))) return null;
+      activities.push({ kind: "webSearch", queries, output: pairedSearch ? body[activities.length] : null });
     } else if (name === "apply_patch") {
       const patch = parseStringArgument(value, argumentStart) ?? resolveStringVariable(value, argumentStart);
       if (!patch) return null;

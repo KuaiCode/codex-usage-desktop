@@ -602,6 +602,10 @@ function NestedActivityItem({ activity }: { activity: NestedActivity }) {
     </div>;
   }
 
+  if (activity.kind === "webSearch") {
+    return <WebSearchItem output={activity.output} status={activity.output === null ? null : "completed"} isError={false} queries={activity.queries} structuredResults={null} rawJsonl={[]} />;
+  }
+
   if (activity.kind === "patch") {
     const { files, additions, deletions, label } = patchSummary(activity.patch, t);
     return <div className="py-1.5">
@@ -704,13 +708,17 @@ function UserInputItem({ item, questions, tokenUsage, rawJsonl }: { item: Extrac
 }
 
 function WebSearchItem({
-  item,
+  output,
+  status,
+  isError,
   queries,
   structuredResults,
   tokenUsage,
   rawJsonl,
 }: {
-  item: Extract<ReplayItem, { kind: "toolCall" }>;
+  output: string | null;
+  status: string | null;
+  isError: boolean;
   queries: string[];
   structuredResults: WebSearchResult[] | null;
   tokenUsage?: TokenUsageItem;
@@ -718,19 +726,19 @@ function WebSearchItem({
 }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const contentBlocks = parseToolContentBlocks(item.output);
-  const output = contentBlocks?.text ?? item.output;
-  const results = output ? splitWebSearchResults(output) : [];
-  const searchLabel = item.status === "completed"
+  const contentBlocks = parseToolContentBlocks(output);
+  const text = contentBlocks?.text ?? output;
+  const results = text ? splitWebSearchResults(text) : [];
+  const searchLabel = status === "completed"
     ? t("sessions.detail.web_search_completed")
     : t("sessions.detail.web_search_running");
   const displayQueries = queries.length > 0 ? queries : [null];
 
   return (
-    <div className={`rounded-lg border p-3 font-mono text-xs leading-relaxed ${item.isError ? ITEM_TONES.error : ITEM_TONES.tool}`}>
+    <div className={`rounded-lg border p-3 font-mono text-xs leading-relaxed ${isError ? ITEM_TONES.error : ITEM_TONES.tool}`}>
       <button
         type="button"
-        className={`flex w-full items-start justify-between gap-3 text-left ${item.isError ? ITEM_TITLE_TONES.error : "text-foreground"} ${DISCLOSURE_BUTTON_CLASS}`}
+        className={`flex w-full items-start justify-between gap-3 text-left ${isError ? ITEM_TITLE_TONES.error : "text-foreground"} ${DISCLOSURE_BUTTON_CLASS}`}
         aria-expanded={isExpanded}
         onClick={() => setIsExpanded((value) => !value)}
       >
@@ -870,7 +878,7 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
   }
 
   if (webSearchQueries || (outerToolName === "web_search" && webSearchResults)) {
-    return <WebSearchItem item={item} queries={webSearchQueries ?? []} structuredResults={webSearchResults} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
+    return <WebSearchItem output={item.output} status={item.status} isError={item.isError} queries={webSearchQueries ?? []} structuredResults={webSearchResults} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
   }
 
   if (backgroundTerminalInput !== null) {

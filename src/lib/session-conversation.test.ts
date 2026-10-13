@@ -3,6 +3,7 @@ import { buildConversation, buildSessionConversation, classifyExploration, parse
 import type { SessionReplayDetail } from "./api";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 import backgroundPolls from "../../e2e/fixtures/background-polls.json";
+import searchTerminal from "../../e2e/fixtures/search-terminal.json";
 
 function replayTurn(items: ReplayItem[]): SessionReplayDetail["turns"][number] {
   return { turnId: "1", startedAt: null, completedAt: null, durationMs: null, systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [], toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items };
@@ -15,6 +16,76 @@ function usage(totalTokens: number): ReplayItem {
 }
 
 describe("conversation projection", () => {
+  it("separates the reported search and terminal wait using their printed content blocks", () => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: searchTerminal[0].payload.input!, output: JSON.stringify(searchTerminal[1].payload.output),
+    }), usage(77075)]))[0];
+    if (block.kind !== "item") throw new Error("Expected mixed activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "webSearch", queries: [
+        "tauri macos startDragging text selection click after dragging window webview",
+        "WKWebView performWindowDragWithEvent selection mouseDown mouseUp",
+      ], output: searchTerminal[1].payload.output![1].text.trim() },
+      { kind: "terminal", sessionId: 81206, input: "", output: { stdout: "", sessionId: 81206, exitCode: null } },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+    expect(block.entry.activity?.unparsedOutputText).toBeNull();
+    expect(block.entry.tokenUsage?.totalTokens).toBe(77075);
+  });
+
+  it.each([
+    ["missing", [{ type: "input_text", text: '{"session_id":81206,"output":"retained poll"}' }]],
+    ["reordered", [searchTerminal[1].payload.output![2], searchTerminal[1].payload.output![1]]],
+    ["extra", [...searchTerminal[1].payload.output!, { type: "input_text", text: "extra print" }]],
+  ])("retains %s mixed output without guessing activity ownership", (_, output) => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: searchTerminal[0].payload.input!, output: JSON.stringify(output),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected mixed activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "webSearch", output: null }, { kind: "terminal", output: null },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toHaveLength(1);
+    if (output.length > 1) expect(block.entry.activity?.unparsedOutputText).toContain("Apple Developer Documentation");
+  });
+
+  it("pairs multiple searches and process outputs in sequential print order", () => {
+    const script = `text(await tools.web__run({search_query:[{q:'first'}]}));
+text(await tools.write_stdin({session_id:1}));
+text(await tools.web__run({search_query:[{q:'second'}]}));
+text(await tools.exec_command({cmd:"pnpm test"}));`;
+    const output = ["first results", '{"session_id":1,"output":"still running"}', "second results", '{"exit_code":1,"output":"test failed"}'];
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: script, output: JSON.stringify(output.map((text) => ({ type: "input_text", text }))),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected mixed activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "webSearch", queries: ["first"], output: "first results" },
+      { kind: "terminal", output: { sessionId: 1, stdout: "still running" } },
+      { kind: "webSearch", queries: ["second"], output: "second results" },
+      { kind: "command", output: { exitCode: 1, stdout: "test failed" } },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+    expect(block.entry.activity?.unparsedOutputText).toBeNull();
+  });
+
+  it("decodes single-quoted query escapes and braces without evaluating expressions", () => {
+    const script = String.raw`text(await tools.web__run({search_query:[{q:'window } "drag" isn\'t \\ selection\nline'}]}));`;
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
+    if (block.kind !== "item") throw new Error("Expected search activity");
+    expect(block.entry.activity?.webSearchQueries).toEqual(['window } "drag" isn\'t \\ selection\nline']);
+  });
+
+  it.each([
+    'text(await tools.web__run({search_query:[{q:"example"}],open:[{ref_id:"https://example.com"}]})); text(await tools.write_stdin({session_id:42}));',
+    'if (ready) { text(await tools.web__run({search_query:[{q:"example"}]})); } text(await tools.write_stdin({session_id:42}));',
+  ])("keeps unsupported or conditional web calls as raw orchestration", (script) => {
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
+    if (block.kind !== "item") throw new Error("Expected orchestration");
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+    expect(block.entry.activity?.argumentsText).toBe(script);
+  });
+
   it("pairs the reported sequential background polls without adopting either process state", () => {
     const block = buildConversation(replayTurn([command("", {
       name: "exec", arguments: backgroundPolls[0].payload.input!, output: JSON.stringify(backgroundPolls[1].payload.output),
@@ -253,13 +324,16 @@ describe("conversation projection", () => {
     expect(block.entry.activity?.argumentsText).toBe(script);
   });
 
-  it("preserves mixed search and command output as one orchestration", () => {
+  it("projects mixed search and command activities without inventing search output", () => {
     const script = 'text(await tools.web__run({search_query:[{q:"example"}]})); text(await tools.exec_command({cmd:"pnpm test"}));';
     const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
     if (block.kind !== "item") throw new Error("Expected tool activity");
     expect(block.entry.activity?.webSearchQueries).toBeNull();
     expect(block.entry.activity?.argumentsText).toBe(script);
-    expect(block.entry.activity?.nestedActivities).toBeNull();
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "webSearch", queries: ["example"], output: null }, { kind: "command", command: "pnpm test", output: null },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toHaveLength(1);
   });
 
   it("groups adjacent exploration without losing calls, raw provenance or token attribution", () => {
