@@ -11,6 +11,79 @@ import structuredCommands from "../../e2e/fixtures/structured-command-responses.
 import clockSleep from "../../e2e/fixtures/clock-sleep.json";
 import backgroundPolls from "../../e2e/fixtures/background-polls.json";
 import searchTerminal from "../../e2e/fixtures/search-terminal.json";
+import openTerminal from "../../e2e/fixtures/open-terminal.json";
+
+it.each([
+  ["en", "completed", "Opened"], ["en", null, "Opening"], ["zh", "completed", "已打开网页："],
+])("renders a standalone page open in %s with status %s", async (language, status, label) => {
+  await i18n.changeLanguage(language!);
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "open", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: "open", name: "exec", status,
+      arguments: 'text(await tools.web__run({open:[{ref_id:"https://example.com"}]}));',
+      output: status ? "page content" : null,
+      stderr: null, startedAt: null, completedAt: null, durationMs: null, isError: false,
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={[]} />);
+  const button = screen.getByRole("button", { name: new RegExp(`${label} https://example.com`) });
+  expect(button).toHaveAttribute("aria-expanded", "false");
+  expect(document.body).not.toHaveTextContent("tools.web__run");
+  await userEvent.click(button);
+  expect(button).toHaveAttribute("aria-expanded", "true");
+  if (status) expect(button.parentElement?.querySelector("pre")?.textContent).toBe("page content");
+});
+
+it("renders the reported opened pages independently from the native command and running poll", async () => {
+  await i18n.changeLanguage("en");
+  const native = openTerminal[1].payload.item!;
+  const turn: SessionReplayDetail["turns"][number] = {
+    turnId: "open-terminal", startedAt: null, completedAt: null, durationMs: null,
+    systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [],
+    toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items: [{
+      kind: "toolCall", callId: openTerminal[0].payload.call_id!, name: "exec", status: "completed",
+      arguments: openTerminal[0].payload.input!, output: JSON.stringify(openTerminal[2].payload.output),
+      stderr: null, startedAt: null, completedAt: null, durationMs: 7200, isError: false, rawJsonlLineNumbers: [1, 2, 3],
+      commandExecutions: [{
+        callId: native.id, name: "exec_command", arguments: JSON.stringify({ cmd: native.command[2] }),
+        output: JSON.stringify({ output: native.aggregated_output, exit_code: native.exit_code }),
+        stderr: null, startedAt: null, completedAt: null, durationMs: 61, status: "completed", isError: false,
+      }],
+    }, {
+      kind: "tokenUsage", timestamp: null, model: "gpt-6", inputTokens: 81022, cachedInputTokens: 76544,
+      outputTokens: 403, reasoningOutputTokens: 264, totalTokens: 81425, rawJsonlLineNumbers: [4],
+    }],
+  };
+  render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={openTerminal.map((record) => JSON.stringify(record))} />);
+  const opened = screen.getByRole("button", { name: /Opened.*github.com/ });
+  expect(opened).toHaveTextContent("Opened https://developer.apple.com/");
+  expect(opened).toHaveAttribute("aria-expanded", "false");
+  const wait = screen.getByRole("button", { name: /Waited for background terminal.*Running/ });
+  expect(wait).toBeDisabled();
+  const command = screen.getByRole("button", { name: /Ran rtk proxy ps/ });
+  expect(command.parentElement?.textContent).toContain("lines omitted");
+  expect(screen.getAllByTestId("token-metadata")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: /Output #/ })).not.toBeInTheDocument();
+  expect(document.body).not.toHaveTextContent("Script completed");
+  expect(document.body).not.toHaveTextContent("Warning: truncated output");
+  await userEvent.click(opened);
+  const pages = opened.parentElement?.querySelectorAll("pre");
+  expect(pages).toHaveLength(2);
+  expect(pages?.[0].textContent).toContain("Issue #11945");
+  expect(pages?.[1].textContent).toContain("performDrag(with:)");
+  expect(opened.parentElement?.textContent).not.toContain("session_id");
+  expect(opened.parentElement?.textContent).not.toContain("PID  PPID");
+  await userEvent.click(command);
+  expect(command.parentElement?.querySelector("pre")?.textContent).toBe(`└ ${native.aggregated_output.trim()}`);
+  expect(command.parentElement?.textContent).not.toContain("Apple Developer Documentation");
+  await userEvent.click(screen.getByRole("button", { name: "View raw JSONL" }));
+  const raw = screen.getByRole("button", { name: "Hide raw JSONL" }).parentElement?.parentElement?.querySelector("pre")?.textContent;
+  expect(raw).toContain('"type":"CommandExecution"');
+  expect(raw).toContain("Warning: truncated output");
+  expect(raw).toContain('"type":"token_count"');
+});
 
 it("renders the reported search and running terminal wait independently with one token badge", async () => {
   await i18n.changeLanguage("en");

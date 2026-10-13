@@ -4,6 +4,7 @@ import type { SessionReplayDetail } from "./api";
 import mixedOrchestration from "../../e2e/fixtures/mixed-orchestration.json";
 import backgroundPolls from "../../e2e/fixtures/background-polls.json";
 import searchTerminal from "../../e2e/fixtures/search-terminal.json";
+import openTerminal from "../../e2e/fixtures/open-terminal.json";
 
 function replayTurn(items: ReplayItem[]): SessionReplayDetail["turns"][number] {
   return { turnId: "1", startedAt: null, completedAt: null, durationMs: null, systemMessages: [], userMessages: [], assistantMessages: [], reasoningSummaries: [], toolCalls: [], patchResults: [], tokenEvents: [], errors: [], items };
@@ -16,6 +17,67 @@ function usage(totalTokens: number): ReplayItem {
 }
 
 describe("conversation projection", () => {
+  it("pairs the reported poll, native ps command and opened pages without duplicate output", () => {
+    const native = openTerminal[1].payload.item!;
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: openTerminal[0].payload.input!, output: JSON.stringify(openTerminal[2].payload.output),
+      commandExecutions: [command("rtk proxy ps -Ao pid,ppid,etime,command", {
+        callId: native.id, output: JSON.stringify({ output: native.aggregated_output, exit_code: native.exit_code }),
+      }) as Extract<ReplayItem, { kind: "toolCall" }>],
+    }), usage(81425)]))[0];
+    if (block.kind !== "item") throw new Error("Expected mixed activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "terminal", sessionId: 81206, output: { stdout: "", sessionId: 81206, exitCode: null } },
+      { kind: "command", callId: native.id, output: { stdout: native.aggregated_output, exitCode: 0 } },
+      { kind: "webOpen", references: [
+        "https://github.com/tauri-apps/tauri/issues/11945",
+        "https://developer.apple.com/documentation/appkit/nswindow/performdrag%28with%3A%29?language=objc",
+      ], output: openTerminal[2].payload.output![3].text },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toEqual([]);
+    expect(block.entry.activity?.unparsedOutputText).toBeNull();
+    expect(block.entry.activity?.retainedArguments).toBeNull();
+    expect(block.entry.tokenUsage?.totalTokens).toBe(81425);
+  });
+
+  it.each([
+    [{ open: [{ ref_id: "turn1search0", lineno: 120 }], response_length: "short" }, ["turn1search0"]],
+    [{ open: [{ ref_id: "https://example.com/one" }, { ref_id: "https://example.com/two" }] }, ["https://example.com/one", "https://example.com/two"]],
+  ])("projects a standalone page open with all references", (args, references) => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: `text(await tools.web__run(${JSON.stringify(args)}));`, output: null,
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected web activity");
+    expect(block.entry.activity?.webOpenReferences).toEqual(references);
+    expect(block.entry.activity?.webSearchQueries).toBeNull();
+  });
+
+  it.each([
+    ["missing", openTerminal[2].payload.output!.slice(0, 3)],
+    ["reordered", [openTerminal[2].payload.output![3], openTerminal[2].payload.output![2], openTerminal[2].payload.output![1]]],
+  ])("retains %s mixed page output without guessing ownership", (_, output) => {
+    const block = buildConversation(replayTurn([command("", {
+      name: "exec", arguments: openTerminal[0].payload.input!, output: JSON.stringify(output),
+    })]))[0];
+    if (block.kind !== "item") throw new Error("Expected mixed activity");
+    expect(block.entry.activity?.nestedActivities).toMatchObject([
+      { kind: "terminal", output: null }, { kind: "command", output: null }, { kind: "webOpen", output: null },
+    ]);
+    expect(block.entry.activity?.unpairedOutputs).toHaveLength(2);
+    if (output[0].text.includes("Apple")) expect(block.entry.activity?.unparsedOutputText).toContain("Apple Developer Documentation");
+  });
+
+  it.each([
+    { open: [] }, { open: [{ ref_id: 42 }] }, { open: [{ ref_id: "ok" }, {}] },
+    { open: [{ ref_id: "ok" }], find: [{ ref_id: "ok", pattern: "title" }] },
+  ])("retains unsupported page opens as raw orchestration", (args) => {
+    const script = `text(await tools.write_stdin({session_id:42})); text(await tools.web__run(${JSON.stringify(args)}));`;
+    const block = buildConversation(replayTurn([command("", { name: "exec", arguments: script })]))[0];
+    if (block.kind !== "item") throw new Error("Expected orchestration");
+    expect(block.entry.activity?.nestedActivities).toBeNull();
+    expect(block.entry.activity?.argumentsText).toBe(script);
+  });
+
   it("separates the reported search and terminal wait using their printed content blocks", () => {
     const block = buildConversation(replayTurn([command("", {
       name: "exec", arguments: searchTerminal[0].payload.input!, output: JSON.stringify(searchTerminal[1].payload.output),

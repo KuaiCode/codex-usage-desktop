@@ -606,6 +606,10 @@ function NestedActivityItem({ activity }: { activity: NestedActivity }) {
     return <WebSearchItem output={activity.output} status={activity.output === null ? null : "completed"} isError={false} queries={activity.queries} structuredResults={null} rawJsonl={[]} />;
   }
 
+  if (activity.kind === "webOpen") {
+    return <WebSearchItem action="open" output={activity.output} status={activity.output === null ? null : "completed"} isError={false} queries={activity.references} structuredResults={null} rawJsonl={[]} />;
+  }
+
   if (activity.kind === "patch") {
     const { files, additions, deletions, label } = patchSummary(activity.patch, t);
     return <div className="py-1.5">
@@ -708,6 +712,7 @@ function UserInputItem({ item, questions, tokenUsage, rawJsonl }: { item: Extrac
 }
 
 function WebSearchItem({
+  action = "search",
   output,
   status,
   isError,
@@ -716,6 +721,7 @@ function WebSearchItem({
   tokenUsage,
   rawJsonl,
 }: {
+  action?: "search" | "open";
   output: string | null;
   status: string | null;
   isError: boolean;
@@ -729,9 +735,9 @@ function WebSearchItem({
   const contentBlocks = parseToolContentBlocks(output);
   const text = contentBlocks?.text ?? output;
   const results = text ? splitWebSearchResults(text) : [];
-  const searchLabel = status === "completed"
-    ? t("sessions.detail.web_search_completed")
-    : t("sessions.detail.web_search_running");
+  const searchLabel = action === "open"
+    ? t(status === "completed" ? "sessions.detail.web_open_completed" : "sessions.detail.web_open_running")
+    : t(status === "completed" ? "sessions.detail.web_search_completed" : "sessions.detail.web_search_running");
   const displayQueries = queries.length > 0 ? queries : [null];
 
   return (
@@ -775,7 +781,7 @@ function WebSearchItem({
         ) : results.length > 0 ? (
           <div className="space-y-2">
             {results.map((result, index) => (
-              <ToolTextBlock key={`${index}-${result.slice(0, 80)}`} title={t("sessions.detail.search_result", { index: index + 1 })} text={result} />
+              <ToolTextBlock key={`${index}-${result.slice(0, 80)}`} title={t(action === "open" ? "sessions.detail.opened_page" : "sessions.detail.search_result", { index: index + 1 })} text={result} />
             ))}
           </div>
         ) : null}
@@ -864,7 +870,7 @@ function SleepItem({ activity, tokenUsage, rawJsonl }: { activity: ToolActivity;
 function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: ToolActivity; item: Extract<ReplayItem, { kind: "toolCall" }>; tokenUsage?: TokenUsageItem; rawJsonl: string[] }) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
-  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
+  const { outerToolName, backgroundTerminalInput, userInputQuestions, webSearchQueries, webOpenReferences, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, contentBlocks, argumentsText, displayToolName, outputText, stderrText } = activity;
   const argumentsTitle = execArguments?.kind === "patch"
     ? t("sessions.detail.patch_input")
     : t(execArguments ? "sessions.detail.command" : "sessions.detail.arguments");
@@ -879,6 +885,10 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
 
   if (webSearchQueries || (outerToolName === "web_search" && webSearchResults)) {
     return <WebSearchItem output={item.output} status={item.status} isError={item.isError} queries={webSearchQueries ?? []} structuredResults={webSearchResults} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
+  }
+
+  if (webOpenReferences) {
+    return <WebSearchItem action="open" output={item.output} status={item.status} isError={item.isError} queries={webOpenReferences} structuredResults={null} tokenUsage={tokenUsage} rawJsonl={rawJsonl} />;
   }
 
   if (backgroundTerminalInput !== null) {

@@ -250,6 +250,23 @@ function parseWebSearchQueries(value: string | null) {
   return queries.length > 0 ? queries : null;
 }
 
+function parseWebOpenReferences(value: string | null) {
+  if (!value) return null;
+  const parsed = parseNestedToolCall(value, "web__run");
+  if (!parsed || Object.keys(parsed).some((key) => !["open", "response_length"].includes(key))
+    || !Array.isArray(parsed.open) || parsed.open.length === 0) return null;
+  const references: string[] = [];
+  for (const entry of parsed.open) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+    const page = entry as Record<string, unknown>;
+    if (typeof page.ref_id !== "string" || !page.ref_id.trim()
+      || Object.keys(page).some((key) => !["ref_id", "lineno"].includes(key))
+      || (page.lineno !== undefined && typeof page.lineno !== "number")) return null;
+    references.push(page.ref_id);
+  }
+  return references;
+}
+
 export function splitWebSearchResults(text: string) {
   return cleanExecOutput(text)
     .split(/-{10,}/)
@@ -320,6 +337,7 @@ export type NestedActivity =
   | { kind: "command"; command: string; workdir: string | null; output: ExecOutput | null; callId?: string | null; status?: string | null }
   | { kind: "terminal"; input: string; sessionId: string | number; output: ExecOutput | null }
   | { kind: "webSearch"; queries: string[]; output: string | null }
+  | { kind: "webOpen"; references: string[]; output: string | null }
   | { kind: "patch"; patch: string }
   | { kind: "image"; path: string; imageUrl: string | null };
 
@@ -539,8 +557,12 @@ function parseNestedActivities(value: string | null, output: string | null) {
       const search = value.slice(callIndex);
       const parsed = parseNestedToolCall(search, name);
       const queries = parseWebSearchQueries(search);
-      if (!queries || !parsed || Object.keys(parsed).some((key) => !["search_query", "response_length"].includes(key))) return null;
-      activities.push({ kind: "webSearch", queries, output: pairedSearch ? body[activities.length] : null });
+      const references = parseWebOpenReferences(search);
+      const webOutput = pairedSearch ? body[activities.length] : null;
+      if (references) activities.push({ kind: "webOpen", references, output: webOutput });
+      else if (queries && parsed && Object.keys(parsed).every((key) => ["search_query", "response_length"].includes(key))) {
+        activities.push({ kind: "webSearch", queries, output: webOutput });
+      } else return null;
     } else if (name === "apply_patch") {
       const patch = parseStringArgument(value, argumentStart) ?? resolveStringVariable(value, argumentStart);
       if (!patch) return null;
@@ -715,6 +737,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     : outerToolName === "web_search" && typeof parsedArguments?.q === "string"
       ? [parsedArguments.q]
       : null;
+  const webOpenReferences = singleCall?.name === "web__run" ? parseWebOpenReferences(item.arguments) : null;
   const webSearchResults = parseWebSearchResultCards(item.output);
   const execArguments = isExec && (!script?.calls.length || singleCall?.name === "exec_command" || singleCall?.name === "apply_patch")
     && !script?.dynamic ? parseExecArguments(item.arguments) : null;
@@ -725,7 +748,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
   const contentBlocks = parseToolContentBlocks(item.output);
   const nestedProjection = isExec ? parseNestedActivities(item.arguments, item.output) : null;
   let nestedActivities = nestedProjection?.activities ?? null;
-  const fallbackOutput = isExec && !nestedProjection && (!execArguments || item.commandExecutions?.length) && !webSearchQueries
+  const fallbackOutput = isExec && !nestedProjection && (!execArguments || item.commandExecutions?.length) && !webSearchQueries && !webOpenReferences
     ? execResultsFromContent(contentBlocks, item.output) : null;
   let unpairedOutputs = nestedProjection?.unpairedOutputs ?? fallbackOutput?.outputs.map(({ result }) => result) ?? [];
   let unparsedOutputText = nestedProjection?.unparsedOutputText ?? fallbackOutput?.unparsedOutputText ?? null;
@@ -778,7 +801,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     : isExec && isEmptyExecOutput(rawOutputText) ? null : rawOutputText;
   const stderrText = execOutput?.stderr ?? item.stderr;
 
-  return { outerToolName, sleep, backgroundTerminalInput, userInputQuestions, webSearchQueries, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
+  return { outerToolName, sleep, backgroundTerminalInput, userInputQuestions, webSearchQueries, webOpenReferences, webSearchResults, nestedActivities, unpairedOutputs, unparsedOutputText, retainedArguments, execArguments, argumentEntries, execOutput, contentBlocks, argumentsText, displayToolName, outputText, stderrText };
 }
 
 export type ToolActivity = ReturnType<typeof buildToolActivity>;
