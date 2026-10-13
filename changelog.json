@@ -1,4 +1,8 @@
 {
+  "3.15.2": {
+    "zh": "- chore(homebrew): update cask to 3.15.1\n- fix(replay): render background poll batches with process states\n- fix(replay): split mixed web search and terminal activities\n- fix(replay): render page opens in mixed tool batches",
+    "en": "- chore(homebrew): update cask to 3.15.1\n- fix(replay): render background poll batches with process states\n- fix(replay): split mixed web search and terminal activities\n- fix(replay): render page opens in mixed tool batches"
+  },
   "3.15.1": {
     "zh": "- chore(homebrew): update cask to 3.14.2\n- fix: preserve command responses in session details\n- fix(replay): preserve orchestration results and prevent incorrect pairing\n- fix: simplify session command activity display\n- fix(replay): pair command outputs using native execution records\n- fix(replay): remove process session labels\n- fix(replay): render clock sleep as waiting activities\n- test: fix chart sizing and update check warnings\n- fix(test): use platform-native file URL in replay fixture",
     "en": "- chore(homebrew): update cask to 3.14.2\n- fix: preserve command responses in session details\n- fix(replay): preserve orchestration results and prevent incorrect pairing\n- fix: simplify session command activity display\n- fix(replay): pair command outputs using native execution records\n- fix(replay): remove process session labels\n- fix(replay): render clock sleep as waiting activities\n- test: fix chart sizing and update check warnings\n- fix(test): use platform-native file URL in replay fixture"
