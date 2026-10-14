@@ -72,7 +72,15 @@ Break usage down by:
 
 See **which project, model, or session consumed your tokens** and understand what drives your usage.
 
-![Project usage details with token composition and estimated costs](docs/project-usage-detail.jpg)
+In the Project view, you can:
+
+- Compare daily token and estimated cost trends side by side for each project
+- See non-cached input, cached input, output, and cache hit rate, with bars comparing token totals and estimated costs across projects
+- Sort by project name, recent activity, token usage (total, input, cached, or output), or estimated cost, in ascending or descending order
+- Recognize Codex projects by their names and badges while keeping directory paths visible
+- Click a project to open detailed analytics and searchable sessions grouped by day, then open a session to inspect its activity
+
+![Project usage dashboard with daily trends, token composition, and estimated costs](docs/project-usage-detail.webp)
 
 For each model, see estimated 5-hour and weekly quota consumption over the selected period, both in total and per million tokens. These estimates come from single-model session snapshots and may be affected by concurrent sessions.
 
