@@ -1,4 +1,8 @@
 {
+  "3.16.0": {
+    "zh": "- chore(homebrew): update cask to 3.15.2\n- docs: refresh project usage screenshot and feature descriptions\n- feat: support zstd-compressed Codex sessions\n- test: verify real compressed sessions in the native UI",
+    "en": "- chore(homebrew): update cask to 3.15.2\n- docs: refresh project usage screenshot and feature descriptions\n- feat: support zstd-compressed Codex sessions\n- test: verify real compressed sessions in the native UI"
+  },
   "3.15.2": {
     "zh": "- chore(homebrew): update cask to 3.15.1\n- fix(replay): render background poll batches with process states\n- fix(replay): split mixed web search and terminal activities\n- fix(replay): render page opens in mixed tool batches",
     "en": "- chore(homebrew): update cask to 3.15.1\n- fix(replay): render background poll batches with process states\n- fix(replay): split mixed web search and terminal activities\n- fix(replay): render page opens in mixed tool batches"
