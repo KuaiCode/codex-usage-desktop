@@ -53,7 +53,7 @@ const ITEM_TITLE_TONES = {
 } as const;
 
 function cleanSessionId(sessionId: string) {
-  return sessionId.replace(/\.jsonl$/, "");
+  return sessionId.replace(/\.jsonl(?:\.zst)?$/, "");
 }
 
 function formatDuration(ms: number | null | undefined) {

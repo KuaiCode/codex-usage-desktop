@@ -3,6 +3,7 @@ use crate::{
         query_session_hierarchy_records, query_session_rollup_record, SessionHierarchyRecord,
         SessionRollupRecord,
     },
+    session_file::{open_session_file, read_session_file},
     types::{
         DailyUsageRow, ModelUsage, SessionReplayAgent, SessionReplayDetail, SessionReplayItem,
         SessionReplayMessage, SessionReplayPatchResult, SessionReplaySummary,
@@ -14,8 +15,7 @@ use rusqlite::Connection;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
-    fs::{self, File},
-    io::{BufRead, BufReader},
+    io::BufRead,
     path::Path,
 };
 
@@ -59,7 +59,7 @@ struct ReplayParseState {
 pub fn fetch_session_detail(db: &Connection, path: &str) -> Result<SessionReplayDetail, String> {
     let record = query_session_rollup_record(db, path)?
         .ok_or_else(|| "Session file is not indexed".to_string())?;
-    let raw_jsonl = fs::read_to_string(&record.path).map_err(|error| error.to_string())?;
+    let raw_jsonl = read_session_file(Path::new(&record.path))?;
     fetch_session_detail_with_raw(db, path, raw_jsonl)
 }
 
@@ -236,8 +236,8 @@ pub fn load_session_agents(db: &Connection) -> Result<Vec<SessionReplayAgent>, S
 }
 
 pub(crate) fn read_session_agent(record: SessionHierarchyRecord) -> Option<SessionReplayAgent> {
-    let file = File::open(&record.path).ok()?;
-    for line in BufReader::new(file).lines().map_while(Result::ok) {
+    let reader = open_session_file(Path::new(&record.path)).ok()?;
+    for line in reader.lines().map_while(Result::ok) {
         let Ok(entry) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
@@ -2292,6 +2292,7 @@ mod tests {
     use super::*;
     use crate::db::{open_database, upsert_session_file_rollups, SessionFileRollup};
     use std::{
+        fs,
         io::Write,
         sync::atomic::{AtomicU64, Ordering},
     };

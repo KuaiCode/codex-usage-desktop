@@ -9,6 +9,7 @@ mod overview;
 mod pricing;
 mod project_sessions;
 mod scanner;
+mod session_file;
 mod session_index;
 mod session_replay;
 mod types;

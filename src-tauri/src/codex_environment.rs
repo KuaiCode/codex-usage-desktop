@@ -83,8 +83,7 @@ pub fn has_jsonl_sessions(codex_home: &Path) -> bool {
                     .filter_map(Result::ok)
                     .any(|entry| {
                         entry.file_type().is_file()
-                            && entry.path().extension().and_then(|ext| ext.to_str())
-                                == Some("jsonl")
+                            && crate::session_file::is_session_file(entry.path())
                     })
         })
 }
@@ -207,6 +206,20 @@ mod tests {
         fs::write(root.join("sessions/2026/07/22/session.jsonl"), "{}\n").unwrap();
         assert!(has_jsonl_sessions(&root));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detects_compressed_sessions_in_active_and_archived_directories() {
+        for directory in ["sessions/2026/10/08", "archived_sessions"] {
+            let root = tempfile_dir();
+            let parent = root.join(directory);
+            fs::create_dir_all(&parent).unwrap();
+            fs::write(parent.join("unrelated.zst"), []).unwrap();
+            assert!(!has_jsonl_sessions(&root));
+            fs::write(parent.join("session.jsonl.zst"), []).unwrap();
+            assert!(has_jsonl_sessions(&root));
+            fs::remove_dir_all(root).unwrap();
+        }
     }
 
     #[test]

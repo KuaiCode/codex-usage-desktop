@@ -65,6 +65,11 @@ pub fn resolve_thread_name(
 
 pub(crate) fn rollout_thread_id(path: &Path) -> Option<&str> {
     let stem = path.file_stem()?.to_str()?;
+    let stem = if path.extension().is_some_and(|extension| extension == "zst") {
+        stem.strip_suffix(".jsonl")?
+    } else {
+        stem
+    };
     let id = stem.get(stem.len().checked_sub(THREAD_ID_LENGTH)?..)?;
     let bytes = id.as_bytes();
     let valid = bytes.iter().enumerate().all(|(index, byte)| match index {
@@ -80,6 +85,17 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const THREAD_ID: &str = "01977e3d-d9f6-72b7-93cf-f3f2f83c382c";
+
+    #[test]
+    fn compressed_rollouts_keep_their_thread_id_and_official_name() {
+        let path = format!("/tmp/rollout-2026-06-11T00-00-00-{THREAD_ID}.jsonl.zst");
+        assert_eq!(rollout_thread_id(Path::new(&path)), Some(THREAD_ID));
+        let names = HashMap::from([(THREAD_ID.to_string(), "Official title".to_string())]);
+        assert_eq!(
+            thread_name_for_path(&path, &names).as_deref(),
+            Some("Official title")
+        );
+    }
 
     #[test]
     fn latest_valid_name_wins_and_invalid_entries_are_ignored() {

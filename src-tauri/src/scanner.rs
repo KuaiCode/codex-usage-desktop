@@ -7,6 +7,7 @@ use crate::{
         SessionFileRollup, SessionQuotaRollup,
     },
     pricing::{calculate_cost_usd, PricingSource},
+    session_file::{is_session_file, open_session_file, read_session_file},
     types::{
         DailyUsageRow, ModelUsage, ProjectUsage, ScanMetrics, ScanResponse, SessionQuotaWindowUsage,
     },
@@ -17,7 +18,7 @@ use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
-    io::{BufRead, BufReader},
+    io::BufRead,
     path::{Path, PathBuf},
     sync::Mutex,
     time::{Instant, SystemTime},
@@ -143,7 +144,7 @@ pub fn rescan_session(
             })
         })
         .ok_or_else(|| "Session file no longer exists".to_string())?;
-    let raw = fs::read_to_string(&file.path).map_err(|error| error.to_string())?;
+    let raw = read_session_file(&file.path)?;
     let rollup = parse_rollup(file, &raw, &timezone, &scanned_at, pricing)?;
     remove_duplicate_rollups(&tx, file, &cached)?;
     upsert_session_file_rollups(&tx, &[rollup], &scanned_at)?;
@@ -157,7 +158,7 @@ pub fn rescan_session(
         ScanMetrics {
             files_scanned: files.len(),
             files_parsed: 1,
-            bytes_read: raw.len() as u64,
+            bytes_read: file.size_bytes as u64,
             parse_ms: started.elapsed().as_millis(),
             ..ScanMetrics::default()
         },
@@ -231,7 +232,7 @@ pub fn rescan_project(
         // Changed or new files need only a metadata pass to discover project membership.
         let raw = if belonged || !unchanged || previous.is_some_and(|rollup| rollup.rows.is_empty())
         {
-            Some(fs::read_to_string(&file.path).map_err(|error| error.to_string())?)
+            Some(read_session_file(&file.path)?)
         } else {
             None
         };
@@ -246,7 +247,7 @@ pub fn rescan_project(
         remove_duplicate_rollups(&tx, file, &cached)?;
         upsert_session_file_rollups(&tx, &[rollup], &scanned_at)?;
         metrics.files_parsed += 1;
-        metrics.bytes_read += raw.len() as u64;
+        metrics.bytes_read += file.size_bytes as u64;
     }
     for rollup in &cached {
         if rollup_has_project(rollup, project)
@@ -322,7 +323,7 @@ fn parse_rollup(
     Ok(SessionFileRollup {
         path: file.cache_key.clone(),
         modified_at_ms: file.modified_at_ms,
-        size_bytes: raw.len() as i64,
+        size_bytes: file.size_bytes,
         rows: build_daily_rows(&events, timezone, updated_at, pricing),
         prompt_title: Some(title),
         quota_usage: Some(quota),
@@ -492,15 +493,16 @@ fn find_session_files(codex_home: Option<PathBuf>) -> Result<Vec<SessionFile>, S
             }
 
             let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
+            if !is_session_file(path) {
                 continue;
             }
             let key = session_file_id(path)
                 .map(|id| format!("id:{id}"))
                 .unwrap_or_else(|| {
+                    let relative = path.strip_prefix(&sessions_dir).unwrap().to_string_lossy();
                     format!(
                         "path:{}",
-                        path.strip_prefix(&sessions_dir).unwrap().display()
+                        relative.strip_suffix(".zst").unwrap_or(&relative)
                     )
                 });
             if !seen.insert(key) {
@@ -524,8 +526,7 @@ fn session_file_id(path: &Path) -> Option<String> {
     if let Some(id) = crate::session_index::rollout_thread_id(path) {
         return Some(id.to_string());
     }
-    let file = fs::File::open(path).ok()?;
-    let line = BufReader::new(file).lines().next()?.ok()?;
+    let line = open_session_file(path).ok()?.lines().next()?.ok()?;
     let entry: Value = serde_json::from_str(&line).ok()?;
     if entry.get("type").and_then(Value::as_str) != Some("session_meta") {
         return None;
@@ -557,7 +558,7 @@ fn load_session_file_with_quota(
     events: &mut Vec<UsageEvent>,
     timezone: &str,
 ) -> Result<(String, SessionQuotaRollup), String> {
-    let content = fs::read_to_string(path).map_err(|error| error.to_string())?;
+    let content = read_session_file(path)?;
     parse_session_file_with_quota(&content, events, timezone)
 }
 
@@ -909,9 +910,9 @@ fn quota_window_usage(snapshots: &[QuotaSnapshot]) -> SessionQuotaWindowUsage {
 
 #[cfg(test)]
 fn load_prompt_title(path: &Path) -> Result<String, String> {
-    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let reader = open_session_file(path).map_err(|error| error.to_string())?;
     let mut has_turn_context = false;
-    for line in BufReader::new(file).lines() {
+    for line in reader.lines() {
         let line = line.map_err(|error| error.to_string())?;
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -1257,6 +1258,203 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     static TEMP_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn write_compressed(path: &Path, raw: &str) {
+        fs::write(path, zstd::stream::encode_all(raw.as_bytes(), 0).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn compressed_sessions_preserve_usage_replay_names_and_scoped_refreshes() {
+        for directory in ["sessions/2026/09/01", "archived_sessions"] {
+            let (_temporary, home, mut db) = scoped_fixture();
+            let parent = home.join(directory);
+            fs::create_dir_all(&parent).unwrap();
+            let id = "01977e3d-d9f6-72b7-93cf-f3f2f83c382c";
+            let plain = parent.join(format!("rollout-2026-09-01T09-00-00-{id}.jsonl"));
+            let compressed = plain.with_extension("jsonl.zst");
+            let raw = format!(
+                "{{\"type\":\"session_meta\",\"payload\":{{\"id\":\"{id}\",\"cwd\":\"/repo/a\"}}}}\n{}",
+                scoped_log("/repo/a", 100, "Compressed session prompt")
+            );
+            fs::write(&plain, &raw).unwrap();
+            fs::write(
+                home.join("session_index.jsonl"),
+                format!("{{\"id\":\"{id}\",\"thread_name\":\"Official title\"}}\n"),
+            )
+            .unwrap();
+            let pricing = PricingSource::embedded();
+            scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into())).unwrap();
+            let before =
+                serde_json::to_value(crate::db::query_all_daily_rows(&db).unwrap()).unwrap();
+
+            write_compressed(&compressed, &raw);
+            fs::remove_file(&plain).unwrap();
+            // A refresh from an already-open plain session follows its compressed replacement.
+            let result = rescan_session(
+                &mut db,
+                &pricing,
+                Some(home.clone()),
+                Some("UTC".into()),
+                plain.to_str().unwrap(),
+            )
+            .unwrap();
+            assert_eq!(result.session.path, compressed.to_string_lossy());
+            assert_eq!(result.session.total_tokens, 110);
+            assert_eq!(
+                result.session.thread_name.as_deref(),
+                Some("Official title")
+            );
+            assert_eq!(result.detail.raw_jsonl, raw);
+            assert_eq!(result.detail.agents[0].session_id, id);
+            assert_eq!(crate::db::query_session_details(&db).unwrap().len(), 1);
+            let replay =
+                crate::session_replay::fetch_session_detail(&db, compressed.to_str().unwrap())
+                    .unwrap();
+            assert_eq!(replay.raw_jsonl, raw);
+            assert_eq!(replay.summary.total_tokens, 110);
+            assert!(!replay.turns.is_empty());
+
+            let scan = scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into()))
+                .unwrap();
+            assert_eq!(scan.metrics.files_reused, 1);
+            assert_eq!(scan.metrics.files_parsed, 0);
+            let mut after =
+                serde_json::to_value(crate::db::query_all_daily_rows(&db).unwrap()).unwrap();
+            // Scan timestamps change, but every usage and cost field stays identical.
+            after[0]["updatedAt"] = before[0]["updatedAt"].clone();
+            assert_eq!(after, before);
+
+            write_compressed(
+                &compressed,
+                &scoped_log("/repo/a", 500, "Updated compressed prompt"),
+            );
+            rescan_project(&mut db, &pricing, Some(home), Some("UTC".into()), "/repo/a").unwrap();
+            assert_eq!(
+                crate::db::query_all_daily_rows(&db).unwrap()[0].total_tokens,
+                510
+            );
+            assert!(
+                crate::session_replay::fetch_session_detail(&db, compressed.to_str().unwrap())
+                    .unwrap()
+                    .raw_jsonl
+                    .contains("Updated compressed prompt")
+            );
+        }
+    }
+
+    #[test]
+    fn discovers_compressed_sessions_and_deduplicates_plain_and_archived_copies() {
+        for name in [
+            "rollout-2026-09-01T09-00-00-01977e3d-d9f6-72b7-93cf-f3f2f83c382c.jsonl",
+            "session.jsonl",
+        ] {
+            let (_temporary, home, mut db) = scoped_fixture();
+            fs::create_dir_all(home.join("archived_sessions")).unwrap();
+            let plain = home.join("sessions").join(name);
+            let compressed = plain.with_extension("jsonl.zst");
+            let raw = scoped_log("/repo/a", 100, "Compressed prompt");
+            write_compressed(&compressed, &raw);
+            let pricing = PricingSource::embedded();
+            let scan = scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into()))
+                .unwrap();
+            assert_eq!(scan.metrics.files_parsed, 1);
+            assert_eq!(
+                crate::db::query_all_daily_rows(&db).unwrap()[0].total_tokens,
+                110
+            );
+            fs::write(&plain, &raw).unwrap();
+            write_compressed(
+                &home.join("archived_sessions").join(format!("{name}.zst")),
+                &raw,
+            );
+            let scan = scan_codex_usage(&mut db, &pricing, Some(home), Some("UTC".into())).unwrap();
+            assert_eq!(scan.metrics.files_scanned, 1);
+            assert_eq!(crate::db::query_session_details(&db).unwrap().len(), 1);
+            assert_eq!(
+                crate::db::query_all_daily_rows(&db).unwrap()[0].total_tokens,
+                110
+            );
+        }
+    }
+
+    #[test]
+    fn invalid_compressed_sessions_do_not_replace_cached_usage() {
+        let (_temporary, home, mut db) = scoped_fixture();
+        let path = home.join("sessions/session.jsonl.zst");
+        let pricing = PricingSource::embedded();
+        write_compressed(
+            &path,
+            &scoped_log("/repo/a", 100, "Valid compressed prompt"),
+        );
+        scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into())).unwrap();
+        let snapshot = scoped_snapshot(&db);
+        fs::write(&path, b"not zstd").unwrap();
+        assert!(
+            scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into())).is_err()
+        );
+        assert_eq!(scoped_snapshot(&db), snapshot);
+        let mut truncated =
+            zstd::stream::encode_all(scoped_log("/repo/a", 9999, "Truncated").as_bytes(), 0)
+                .unwrap();
+        truncated.truncate(truncated.len() - 5);
+        fs::write(&path, truncated).unwrap();
+        assert!(scan_codex_usage(&mut db, &pricing, Some(home), Some("UTC".into())).is_err());
+        assert_eq!(scoped_snapshot(&db), snapshot);
+    }
+
+    #[test]
+    #[ignore = "Set CODEX_USAGE_ZSTD_FIXTURE to a local rollout.jsonl.zst; requires the zstd CLI"]
+    fn real_compressed_session_matches_independently_decompressed_jsonl() {
+        let source = PathBuf::from(std::env::var_os("CODEX_USAGE_ZSTD_FIXTURE").unwrap());
+        let output = std::process::Command::new("zstd")
+            .args(["-d", "-c", "--"])
+            .arg(&source)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        let raw = String::from_utf8(output.stdout).unwrap();
+        let mut snapshots = Vec::new();
+        for compressed in [false, true] {
+            let (_temporary, home, mut db) = scoped_fixture();
+            let name = source.file_name().unwrap().to_str().unwrap();
+            let name = if compressed {
+                name
+            } else {
+                name.strip_suffix(".zst").unwrap()
+            };
+            let path = home.join("sessions").join(name);
+            if compressed {
+                fs::copy(&source, &path).unwrap();
+            } else {
+                fs::write(&path, &raw).unwrap();
+            }
+            let scan = scan_codex_usage(
+                &mut db,
+                &PricingSource::embedded(),
+                Some(home),
+                Some("UTC".into()),
+            )
+            .unwrap();
+            assert_eq!(scan.metrics.files_parsed, 1);
+            let detail =
+                crate::session_replay::fetch_session_detail(&db, path.to_str().unwrap()).unwrap();
+            assert_eq!(detail.raw_jsonl, raw);
+            assert!(detail.summary.total_tokens > 0);
+            assert!(!detail.turns.is_empty());
+            assert_eq!(detail.agents.len(), 1);
+            let mut daily = crate::db::query_all_daily_rows(&db).unwrap();
+            for row in &mut daily {
+                row.updated_at.clear();
+            }
+            snapshots.push(serde_json::json!({
+                "daily": daily,
+                "summary": detail.summary,
+                "turns": detail.turns,
+                "agentId": detail.agents[0].session_id,
+            }));
+        }
+        assert_eq!(snapshots[0], snapshots[1]);
+    }
 
     #[test]
     fn imports_daily_codex_usage() {

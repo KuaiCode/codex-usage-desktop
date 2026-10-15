@@ -44,7 +44,7 @@ function formatSessionTokenCount(value: number) {
 }
 
 function cleanSessionId(sessionId: string) {
-  return sessionId.replace(/\.jsonl$/, "");
+  return sessionId.replace(/\.jsonl(?:\.zst)?$/, "");
 }
 
 function orderSessionsByAgentHierarchy(sessions: SessionDisplayRow[]) {

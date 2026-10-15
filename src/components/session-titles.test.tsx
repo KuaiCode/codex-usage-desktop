@@ -505,12 +505,12 @@ describe("session titles", () => {
     expect(onSessionClick).not.toHaveBeenCalled();
   });
 
-  it("shows the summary name with weak file metadata and avoids repeating a fallback ID", () => {
+  it.each([".jsonl", ".jsonl.zst"])("shows names and file metadata without repeating a fallback ID (%s)", (extension) => {
     render(
       <SessionUsageTable
         sessions={[
-          session({ path: "/tmp/titled.jsonl", sessionId: "titled-session.jsonl", threadName: "Fix login flow", sizeBytes: 2048 }),
-          session({ path: "/tmp/fallback.jsonl", sessionId: "fallback-session.jsonl", sizeBytes: 3072 }),
+          session({ path: `/tmp/titled${extension}`, sessionId: `titled-session${extension}`, threadName: "Fix login flow", sizeBytes: 2048 }),
+          session({ path: `/tmp/fallback${extension}`, sessionId: `fallback-session${extension}`, sizeBytes: 3072 }),
         ]}
       />,
     );
@@ -518,9 +518,9 @@ describe("session titles", () => {
     const titledCard = screen.getByText("Fix login flow").closest("article")!;
     const fallbackCard = screen.getByText("fallback-session").closest("article")!;
     expect(within(titledCard).getByText("titled-session")).toBeInTheDocument();
-    expect(within(titledCard).getByText("2 KB")).toHaveAttribute("title", "/tmp/titled.jsonl");
+    expect(within(titledCard).getByText("2 KB")).toHaveAttribute("title", `/tmp/titled${extension}`);
     expect(within(fallbackCard).getAllByText("fallback-session")).toHaveLength(1);
-    expect(within(fallbackCard).getByText("3 KB")).toHaveAttribute("title", "/tmp/fallback.jsonl");
+    expect(within(fallbackCard).getByText("3 KB")).toHaveAttribute("title", `/tmp/fallback${extension}`);
   });
 
   it.each(["en", "zh", "ja"])("shows the modified time and complete tooltip in the %s interface language", async (language) => {
@@ -1119,15 +1119,15 @@ describe("session titles", () => {
     expect(secondTurn).toHaveAttribute("aria-current", "location");
   });
 
-  it("falls back to the session ID in session details", async () => {
+  it.each([".jsonl", ".jsonl.zst"])("falls back to the session ID in session details (%s)", async (extension) => {
     const writeText = vi.fn();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
     invokeMock.mockResolvedValue({
-      path: "/tmp/fallback.jsonl",
-      sessionId: "fallback-session.jsonl",
+      path: `/tmp/fallback${extension}`,
+      sessionId: `fallback-session${extension}`,
       threadName: null,
       modifiedAtMs: new Date("2026-07-15T08:00:00Z").getTime(),
       sizeBytes: 1024,
