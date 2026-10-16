@@ -1,4 +1,8 @@
 {
+  "3.17.0": {
+    "zh": "- chore(homebrew): update cask to 3.16.1\n- build: cache Rust compilation with sccache\n- feat: add turn start and end navigation",
+    "en": "- chore(homebrew): update cask to 3.16.1\n- build: cache Rust compilation with sccache\n- feat: add turn start and end navigation"
+  },
   "3.16.1": {
     "zh": "- chore(homebrew): update cask to 3.15.2\n- docs: refresh project usage screenshot and feature descriptions\n- feat: support zstd-compressed Codex sessions\n- test: verify real compressed sessions in the native UI\n- fix(tests): isolate fixtures and use native Windows paths",
     "en": "- chore(homebrew): update cask to 3.15.2\n- docs: refresh project usage screenshot and feature descriptions\n- feat: support zstd-compressed Codex sessions\n- test: verify real compressed sessions in the native UI\n- fix(tests): isolate fixtures and use native Windows paths"
