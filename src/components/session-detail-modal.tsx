@@ -4,6 +4,7 @@ import {
   type ConversationBlock, type DisplayTokenUsageItem, type ExecOutput, type NestedActivity, type ReplayItem, type TimelineEntry, type TokenUsageItem, type ToolActivity, type UserInputQuestion, type WebSearchResult,
 } from "@/lib/session-conversation";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Coins, Database, FileDiff, FileJson, FolderOpen, GitBranch, Info, List, Loader2, RefreshCcw, MessageSquare, Terminal, Wrench, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -1326,9 +1327,12 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
     });
   }
 
-  function scrollToTurn(key: string) {
+  function scrollToTurn(key: string, position: "start" | "end") {
+    if (position === "end" && !expandedTurns.has(key)) {
+      flushSync(() => setExpandedTurns((current) => new Set(current).add(key)));
+    }
     setActiveTurnKey(key);
-    turnRefs.current.get(key)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    turnRefs.current.get(key)?.scrollIntoView({ behavior: "smooth", block: position });
   }
 
   return (
@@ -1508,17 +1512,27 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
                       const preview = firstUserPreview(turn);
                       const isActive = activeTurnKey === turnKey;
                       return (
-                        <button
+                        <div
                           key={turnKey}
-                          type="button"
                           className={`block w-full rounded-md px-2 py-1.5 text-left transition ${isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                          aria-label={`${t("sessions.detail.navigate_to_turn", { id: turn.turnId })}${preview ? `: ${preview}` : ""}`}
                           aria-current={isActive ? "location" : undefined}
-                          onClick={() => scrollToTurn(turnKey)}
                         >
                           <span className="block text-xs font-semibold">{t("sessions.detail.turn", { id: turn.turnId })}</span>
                           {preview ? <span className="mt-0.5 block truncate text-[10px] opacity-75">{preview}</span> : null}
-                        </button>
+                          <div className="mt-1 flex gap-1">
+                            {(["start", "end"] as const).map((position) => (
+                              <button
+                                key={position}
+                                type="button"
+                                className={`flex-1 px-1 py-1 text-xs font-medium hover:bg-primary/10 ${DISCLOSURE_BUTTON_CLASS}`}
+                                aria-label={`${t(`sessions.detail.navigate_to_turn_${position}`, { id: turn.turnId })}${preview ? `: ${preview}` : ""}`}
+                                onClick={() => scrollToTurn(turnKey, position)}
+                              >
+                                {t(`sessions.detail.turn_${position}`)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       );
                     })}
                   </div>
@@ -1537,7 +1551,7 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
                     if (element) turnRefs.current.set(turnKey, element);
                     else turnRefs.current.delete(turnKey);
                   }}
-                  className="scroll-mt-5 rounded-xl border-2 border-border/50 p-3"
+                  className="scroll-mt-5 scroll-mb-5 rounded-xl border-2 border-border/50 p-3"
                 >
                   <button
                     type="button"
