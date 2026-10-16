@@ -10,6 +10,8 @@ jobs:
   build:
     name: Build Windows x64 installer
     runs-on: windows-latest
+    env:
+      SCCACHE_GHA_ENABLED: "true"
 
     steps:
       - name: Checkout
@@ -35,6 +37,10 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
+          cache-targets: false
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

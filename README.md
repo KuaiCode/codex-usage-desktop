@@ -260,7 +260,7 @@ Your Codex session content is sensitive. The app is designed to keep it on your 
 
 Codex Usage Desktop is built with React 19, Vite, Tauri v2, and a native Rust usage pipeline.
 
-Install Node.js `>= 24`, `pnpm`, Rust, and the Tauri v2 system dependencies, then start the real desktop app:
+Install Node.js `>= 24`, `pnpm`, Rust, [sccache](https://github.com/mozilla/sccache#installation) (`brew install sccache` on macOS or `cargo install sccache --locked`), and the Tauri v2 system dependencies, then start the real desktop app:
 
 ```bash
 pnpm install
@@ -284,6 +284,8 @@ cd src-tauri && cargo test
 ```
 
 Packaged builds use `pnpm tauri build`.
+
+Rust builds use sccache through `.cargo/config.toml`, with incremental compilation disabled. Run `sccache --show-stats` to inspect cache hits. CI uses the GitHub Actions cache backend; local builds use the local disk cache.
 
 ### Release download trend
 

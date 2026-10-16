@@ -260,7 +260,7 @@ Codex 工作階段內容可能包含敏感資訊，因此應用程式的設計�
 
 Codex Usage Desktop 使用 React 19、Vite、Tauri v2 和 Rust 原生用量處理流程建置。
 
-安裝 Node.js `>= 24`、`pnpm`、Rust 和 Tauri v2 系統相依套件，然後啟動實際的桌面應用程式：
+安裝 Node.js `>= 24`、`pnpm`、Rust、[sccache](https://github.com/mozilla/sccache#installation)（macOS 使用 `brew install sccache`，或使用 `cargo install sccache --locked`）和 Tauri v2 系統相依套件，然後啟動實際的桌面應用程式：
 
 ```bash
 pnpm install
@@ -284,6 +284,8 @@ cd src-tauri && cargo test
 ```
 
 使用 `pnpm tauri build` 建置安裝包。
+
+Rust 建置透過 `.cargo/config.toml` 使用 sccache，並停用增量編譯。執行 `sccache --show-stats` 查看快取命中情況。CI 使用 GitHub Actions 快取後端，本機建置使用本機磁碟快取。
 
 ### 查看 Release 下載趨勢
 
