@@ -1,4 +1,8 @@
 {
+  "3.17.1": {
+    "zh": "- chore(homebrew): update cask to 3.17.0\n- fix(updater): relaunch macOS app before exiting LaunchAgent\n- style: align global scrollbars with app theme",
+    "en": "- chore(homebrew): update cask to 3.17.0\n- fix(updater): relaunch macOS app before exiting LaunchAgent\n- style: align global scrollbars with app theme"
+  },
   "3.17.0": {
     "zh": "- chore(homebrew): update cask to 3.16.1\n- build: cache Rust compilation with sccache\n- feat: add turn start and end navigation",
     "en": "- chore(homebrew): update cask to 3.16.1\n- build: cache Rust compilation with sccache\n- feat: add turn start and end navigation"
