@@ -795,14 +795,21 @@ async fn restart_app(app: tauri::AppHandle) -> Result<(), String> {
         let executable = tauri::process::current_binary(&app.env())
             .map_err(|e| format!("Failed to find app executable: {e}"))?;
         if let Some(bundle) = macos_app_bundle(&executable) {
-            std::process::Command::new("/bin/sh")
-                .arg("-c")
-                .arg("while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; exec /usr/bin/open -n -a \"$2\"")
-                .arg("relaunch")
-                .arg(std::process::id().to_string())
+            // launchd cleans up a LaunchAgent's children when it exits, so hand
+            // the new instance to Launch Services before closing this process.
+            let output = std::process::Command::new("/usr/bin/open")
+                .arg("-n")
                 .arg(bundle)
-                .spawn()
-                .map_err(|e| format!("Failed to schedule app relaunch: {e}"))?;
+                .output()
+                .map_err(|e| format!("Failed to relaunch app: {e}"))?;
+            if !output.status.success() {
+                return Err(format!(
+                    "Failed to relaunch app ({}): {}",
+                    output.status,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ));
+            }
+            log::info!("Requested app relaunch from {}.", bundle.display());
             app.exit(0);
             return Ok(());
         }
