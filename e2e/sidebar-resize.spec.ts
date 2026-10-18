@@ -48,7 +48,7 @@ describe("sidebar resizing", () => {
       expect(layout.dragWidth).toBe(layout.windowWidth);
       expect(layout.buttonsClickable).toBe(true);
       if (layout.isMac) expect(layout.topRowDraggable).toBe(true);
-      expect(layout.contentBodyTop).toBe(0);
+      expect(layout.contentBodyTop).toBe(layout.dragHeight);
       expect(layout.toggleTop).toBeGreaterThanOrEqual(layout.spacerHeight);
       if (layout.isMac) expect(layout.toggleTop).toBeLessThan(36);
     };
@@ -92,6 +92,7 @@ describe("sidebar resizing", () => {
     await $('button[aria-label="Settings"]').click();
     await expect($("h1=Settings")).toBeDisplayed();
     await expect(sidebar).not.toBeExisting();
+    expect(await $("[data-app-content]").getLocation("y")).toBe(await $("[data-tauri-drag-region]").getSize("height"));
     await $("button=Back").click();
     await expectWidth(256);
 

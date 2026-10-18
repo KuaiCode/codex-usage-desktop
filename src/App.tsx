@@ -170,7 +170,7 @@ export default function App() {
         />
       ) : null}
       <div className="relative flex min-w-0 flex-1 flex-col bg-background">
-      {view === "settings" ? <div aria-hidden="true" className="h-[var(--window-controls-height)] shrink-0" /> : null}
+      <div aria-hidden="true" className="h-[var(--window-controls-height)] shrink-0" />
       <div className="relative min-h-0 flex-1 overflow-hidden" data-app-content>
       <div
         className="h-full overflow-y-auto"
