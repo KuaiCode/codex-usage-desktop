@@ -5,7 +5,7 @@ import {
 } from "@/lib/session-conversation";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AlertTriangle, Bot, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Coins, Database, FileDiff, FileJson, FolderOpen, GitBranch, Info, List, Loader2, RefreshCcw, MessageSquare, Terminal, Wrench, X } from "lucide-react";
+import { AlertTriangle, ArrowDownToLine, ArrowUpToLine, Bot, Check, ChevronDown, ChevronRight, Clipboard, Clock3, Coins, Database, FileDiff, FileJson, FolderOpen, GitBranch, Info, List, Loader2, RefreshCcw, MessageSquare, Terminal, Wrench, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { fetchSessionDetail, rescanSession, revealInFileManager, type ScanResponse, type SessionDetailRow, type SessionReplayDetail } from "@/lib/api";
@@ -1495,9 +1495,9 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
               {t("sessions.detail.loading_replay")}
             </div>
           ) : activeTab === "timeline" ? (
-            <div className="relative mx-auto max-w-5xl min-[1280px]:max-w-[77rem]">
+            <div className="mx-auto max-w-5xl min-[1280px]:flex min-[1280px]:max-w-[77rem] min-[1280px]:gap-4">
               <nav
-                className="absolute inset-y-0 right-0 hidden w-48 min-[1280px]:block"
+                className="order-last hidden w-40 shrink-0 min-[1280px]:block"
                 aria-label={t("sessions.detail.quick_navigation")}
               >
                 <div className="sticky top-5 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-lg border border-border/60 bg-surface/95 p-2 shadow-sm backdrop-blur">
@@ -1516,18 +1516,20 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
                           className={`block w-full rounded-md px-2 py-1.5 text-left transition ${isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                           aria-current={isActive ? "location" : undefined}
                         >
-                          <span className="block text-xs font-semibold">{t("sessions.detail.turn", { id: turn.turnId })}</span>
-                          {preview ? <span className="mt-0.5 block truncate text-[10px] opacity-75">{preview}</span> : null}
-                          <div className="mt-1 flex gap-1">
+                          <span className="line-clamp-2 break-words text-xs font-medium" title={preview || undefined}>
+                            {preview || t("sessions.detail.turn", { id: index + 1 })}
+                          </span>
+                          <div className="mt-1 flex justify-end gap-1">
                             {(["start", "end"] as const).map((position) => (
                               <button
                                 key={position}
                                 type="button"
-                                className={`flex-1 px-1 py-1 text-xs font-medium hover:bg-primary/10 ${DISCLOSURE_BUTTON_CLASS}`}
+                                className={`flex h-7 w-7 items-center justify-center hover:bg-primary/10 ${DISCLOSURE_BUTTON_CLASS}`}
                                 aria-label={`${t(`sessions.detail.navigate_to_turn_${position}`, { id: turn.turnId })}${preview ? `: ${preview}` : ""}`}
+                                title={t(`sessions.detail.navigate_to_turn_${position}`, { id: index + 1 })}
                                 onClick={() => scrollToTurn(turnKey, position)}
                               >
-                                {t(`sessions.detail.turn_${position}`)}
+                                {position === "start" ? <ArrowUpToLine className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />}
                               </button>
                             ))}
                           </div>
@@ -1537,7 +1539,7 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
                   </div>
                 </div>
               </nav>
-              <div className="max-w-5xl space-y-5">
+              <div className="min-w-0 max-w-5xl flex-1 space-y-5">
               <AgentHierarchy agents={detail.agents ?? []} activePath={detail.path} onSelect={setActivePath} />
               {detail.turns.map((turn, index) => {
                 const turnKey = `${turn.turnId}-${index}`;

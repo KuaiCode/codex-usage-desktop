@@ -6,7 +6,7 @@ import type { SessionReplayDetail } from "../src/lib/api";
 describe("session turn navigation", () => {
   const run = process.env.CODEX_USAGE_ARCHIVE_E2E === "1" ? it : it.skip;
 
-  run("jumps to each turn's start and end and expands a collapsed destination", async () => {
+  run("keeps navigation beside the content and jumps to each turn's start and end", async () => {
     const sessions = join(process.env.CODEX_HOME!, "sessions", "2026", "10", "16");
     mkdirSync(sessions, { recursive: true });
     const id = "01977e3d-d9f6-72b7-93cf-f3f2f83c3999";
@@ -19,7 +19,7 @@ describe("session turn navigation", () => {
       ...[1, 2, 3].flatMap((turn) => [
         { type: "turn_context", payload: { turn_id: `nav-${turn}`, model: "gpt-5" } },
         { type: "event_msg", payload: { type: "task_started", turn_id: `nav-${turn}` } },
-        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `Navigate turn ${turn}` }] } },
+        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `Navigate turn ${turn}: verify that the user prompt stays readable beside the expanded application sidebar.` }] } },
         ...Array.from({ length: 14 }, (_, step) => ({
           type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: `Turn ${turn}, step ${step + 1}.\n\nChecking the replay navigation.\n\nThis content makes the turn taller than the viewport.` }] },
         })),
@@ -28,9 +28,15 @@ describe("session turn navigation", () => {
       { type: "event_msg", payload: { type: "token_count", info: { total_token_usage: usage, last_token_usage: usage } } },
     ].map((entry) => JSON.stringify({ timestamp, ...entry })).join("\n"));
 
-    const previousLanguage = await browser.execute(() => localStorage.getItem("language"));
+    const previousPreferences = await browser.execute(() => {
+      const keys = ["language", "sidebar_width", "sidebar_collapsed"];
+      const previous = Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)]));
+      localStorage.setItem("language", "en");
+      localStorage.setItem("sidebar_width", "360");
+      localStorage.setItem("sidebar_collapsed", "false");
+      return previous;
+    });
     try {
-      await browser.execute(() => localStorage.setItem("language", "en"));
       const detail = await browser.execute(async (path) => {
         const runtime = (window as unknown as { __TAURI_INTERNALS__: { invoke: <T>(command: string, args?: Record<string, unknown>) => Promise<T> } }).__TAURI_INTERNALS__;
         await runtime.invoke("scan_usage");
@@ -50,6 +56,32 @@ describe("session turn navigation", () => {
       await navigation.waitForDisplayed();
       await dialog.$('p=This content makes the turn taller than the viewport.').waitForExist();
       await expect(navigation.$$('button')).toBeElementsArrayOfSize(6);
+      const layout = await browser.execute(() => {
+        const element = document.querySelector('nav[aria-label="Quick navigation"]')!;
+        const nav = element.getBoundingClientRect();
+        const content = element.nextElementSibling!;
+        const sections = Array.from(content.children);
+        const viewport = document.querySelector('[data-testid="session-detail-scroll"]')!;
+        return {
+          sidebarWidth: document.querySelector('[data-app-sidebar]')!.getBoundingClientRect().width,
+          hasGap: sections.every((section) => section.getBoundingClientRect().right + 15 <= nav.left),
+          fitsViewport: nav.right <= viewport.getBoundingClientRect().right,
+          overflows: content.scrollWidth > content.clientWidth || element.scrollWidth > element.clientWidth,
+        };
+      });
+      expect(layout.sidebarWidth).toBe(360);
+      expect(layout.hasGap).toBe(true);
+      expect(layout.fitsViewport).toBe(true);
+      expect(layout.overflows).toBe(false);
+      const navigationText = await navigation.getText();
+      for (const turn of [1, 2, 3]) {
+        expect(navigationText).toContain(`Navigate turn ${turn}`);
+        expect(navigationText).not.toContain(`nav-${turn}`);
+      }
+      for (const button of await navigation.$$('button')) {
+        expect(await button.getText()).toBe("");
+        await expect(button).toHaveAttribute("title", /Navigate to (start|end) of turn/);
+      }
 
       for (const turn of [1, 2, 3]) {
         const toggle = dialog.$(`button*=Turn nav-${turn}`);
@@ -86,10 +118,12 @@ describe("session turn navigation", () => {
       await browser.saveScreenshot("/tmp/codex-usage-turn-navigation-failure.png");
       throw error;
     } finally {
-      await browser.execute((language) => {
-        if (language === null) localStorage.removeItem("language");
-        else localStorage.setItem("language", language);
-      }, previousLanguage);
+      await browser.execute((preferences) => {
+        for (const [key, value] of Object.entries(preferences)) {
+          if (value === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, value);
+        }
+      }, previousPreferences);
     }
   }).timeout(180_000);
 });
