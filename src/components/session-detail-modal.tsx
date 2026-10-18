@@ -1332,7 +1332,17 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
       flushSync(() => setExpandedTurns((current) => new Set(current).add(key)));
     }
     setActiveTurnKey(key);
-    turnRefs.current.get(key)?.scrollIntoView({ behavior: "smooth", block: position });
+    const scroll = scrollRef.current;
+    const turn = turnRefs.current.get(key);
+    if (!scroll || !turn) return;
+    const viewport = scroll.getBoundingClientRect();
+    const bounds = turn.getBoundingClientRect();
+    const style = getComputedStyle(turn);
+    const offset = position === "start"
+      ? bounds.top - viewport.top - parseFloat(style.scrollMarginTop || "0")
+      : bounds.bottom - viewport.bottom + parseFloat(style.scrollMarginBottom || "0");
+    // scrollIntoView also scrolls overflow-hidden ancestors, moving the title bar offscreen.
+    scroll.scrollTo({ top: scroll.scrollTop + offset, behavior: "smooth" });
   }
 
   return (

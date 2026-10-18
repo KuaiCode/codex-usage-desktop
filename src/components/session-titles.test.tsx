@@ -1084,7 +1084,7 @@ describe("session titles", () => {
     expect(within(summary).getByText("Output tokens").parentElement).toHaveTextContent("75");
   });
 
-  it("navigates directly to a session turn from the quick navigation", async () => {
+  it("navigates to turn edges by scrolling only the replay viewport", async () => {
     const scrollIntoView = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
     await i18n.changeLanguage("en");
@@ -1114,15 +1114,25 @@ describe("session titles", () => {
     const navigation = await screen.findByRole("navigation", { name: "Quick navigation" });
     expect(within(navigation).getByRole("button", { name: /Navigate to start of turn turn-1.*Investigate the sync issue/ }).parentElement).toHaveAttribute("aria-current", "location");
     const secondTurn = within(navigation).getByRole("button", { name: /Navigate to start of turn turn-2.*Apply the verified fix/ });
-    await userEvent.click(secondTurn);
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
-    expect(secondTurn.parentElement).toHaveAttribute("aria-current", "location");
+    const scroll = screen.getByTestId("session-detail-scroll");
+    const scrollTo = vi.fn();
+    scroll.scrollTo = scrollTo;
+    scroll.scrollTop = 200;
+    vi.spyOn(scroll, "getBoundingClientRect").mockReturnValue({ top: 100, bottom: 500 } as DOMRect);
     const turnToggle = screen.getByRole("button", { name: /Turn turn-2.*Collapse/ });
+    const section = turnToggle.parentElement!;
+    section.style.scrollMarginTop = "20px";
+    section.style.scrollMarginBottom = "20px";
+    vi.spyOn(section, "getBoundingClientRect").mockReturnValue({ top: 800, bottom: 1400 } as DOMRect);
+    await userEvent.click(secondTurn);
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "smooth", top: 880 });
+    expect(secondTurn.parentElement).toHaveAttribute("aria-current", "location");
     await userEvent.click(turnToggle);
     expect(turnToggle).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(within(navigation).getByRole("button", { name: /Navigate to end of turn turn-2.*Apply the verified fix/ }));
     expect(turnToggle).toHaveAttribute("aria-expanded", "true");
-    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: "smooth", block: "end" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "smooth", top: 1120 });
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it.each([".jsonl", ".jsonl.zst"])("falls back to the session ID in session details (%s)", async (extension) => {

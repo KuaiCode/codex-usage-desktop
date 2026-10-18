@@ -52,9 +52,29 @@ describe("session turn navigation", () => {
       await card.waitForDisplayed({ timeout: 15_000 });
       await card.click();
       const dialog = $('[aria-labelledby="session-detail-title"]');
+      async function expectHeaderVisible() {
+        const state = await browser.execute(() => {
+          const dialog = document.querySelector('[aria-labelledby="session-detail-title"]')!;
+          const header = dialog.querySelector("header")!;
+          const title = dialog.querySelector("#session-detail-title")!.getBoundingClientRect();
+          const close = header.querySelector('button[aria-label="Close session detail"]')!.getBoundingClientRect();
+          const bounds = dialog.getBoundingClientRect();
+          let outerScrolled = false;
+          for (let ancestor = header.parentElement; ancestor; ancestor = ancestor.parentElement) {
+            outerScrolled ||= ancestor.scrollTop !== 0;
+          }
+          return {
+            titleVisible: title.height > 0 && title.top >= Math.max(0, bounds.top) && title.bottom <= Math.min(innerHeight, bounds.bottom),
+            closeVisible: close.top >= Math.max(0, bounds.top) && close.bottom <= Math.min(innerHeight, bounds.bottom),
+            outerScrolled,
+          };
+        });
+        expect(state).toEqual({ titleVisible: true, closeVisible: true, outerScrolled: false });
+      }
       const navigation = dialog.$('nav[aria-label="Quick navigation"]');
       await navigation.waitForDisplayed();
       await dialog.$('p=This content makes the turn taller than the viewport.').waitForExist();
+      await expectHeaderVisible();
       await expect(navigation.$$('button')).toBeElementsArrayOfSize(6);
       const layout = await browser.execute(() => {
         const element = document.querySelector('nav[aria-label="Quick navigation"]')!;
@@ -148,9 +168,11 @@ describe("session turn navigation", () => {
             const gap = position === "start" ? bounds.top - viewport.top : viewport.bottom - bounds.bottom;
             return gap >= 0 && gap < viewport.height / 4;
           }, position), { timeoutMsg: `Turn ${turn} ${position} should be visible near the viewport edge` });
+          await expectHeaderVisible();
         }
         if (turn === 2) {
-          await toggle.click();
+          // Avoid the embedded driver's scrollIntoView changing ancestors before the navigation click.
+          await toggle.execute((element) => (element as HTMLButtonElement).click());
           await expect(toggle).toHaveAttribute("aria-expanded", "false");
           await clickTurnHalf(2, "end");
           await expect(toggle).toHaveAttribute("aria-expanded", "true");
@@ -159,6 +181,7 @@ describe("session turn navigation", () => {
             const gap = viewport.bottom - element.getBoundingClientRect().bottom;
             return gap >= 0 && gap < viewport.height / 4;
           }));
+          await expectHeaderVisible();
         }
       }
       await browser.saveScreenshot("/tmp/codex-usage-turn-navigation.png");
