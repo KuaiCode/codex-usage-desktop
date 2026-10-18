@@ -28,6 +28,7 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const [showNotes, setShowNotes] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(208);
   const [settingsReturnView, setSettingsReturnView] = useState<DashboardView>("dashboard");
   const [selectedSessionDate, setSelectedSessionDate] = useState<string | null>(null);
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<{
@@ -162,6 +163,8 @@ export default function App() {
           onViewChange={navigate}
           collapsed={sidebarCollapsed}
           onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          width={sidebarWidth}
+          onWidthChange={setSidebarWidth}
           showLogsTab={showLogsTab}
         />
       ) : null}

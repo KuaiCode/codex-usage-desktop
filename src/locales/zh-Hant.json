@@ -31,6 +31,7 @@
     "navigation": "主導覽",
     "collapse_sidebar": "收合側欄",
     "expand_sidebar": "展開側欄",
+    "resize_sidebar": "調整側欄寬度",
     "app_title": "Codex Usage Desktop",
     "upgrade": "升級至 v{{version}}",
     "downloading_update": "正在下載...",

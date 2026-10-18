@@ -31,6 +31,7 @@
     "navigation": "Main navigation",
     "collapse_sidebar": "Collapse sidebar",
     "expand_sidebar": "Expand sidebar",
+    "resize_sidebar": "Resize sidebar",
     "app_title": "Codex Usage Desktop",
     "upgrade": "Upgrade v{{version}}",
     "downloading_update": "Downloading...",

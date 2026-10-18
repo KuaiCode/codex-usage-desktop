@@ -1,5 +1,6 @@
 import { CalendarDays, ChartColumn, Folder, LayoutDashboard, Logs, PanelLeftClose, PanelLeftOpen, Settings, Terminal, Wallet } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useEffect, useRef, useState } from "react";
 import type { DashboardView } from "@/components/dashboard-header";
 
 type AppSidebarProps = {
@@ -7,6 +8,8 @@ type AppSidebarProps = {
   onViewChange: (view: DashboardView) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  width: number;
+  onWidthChange: (width: number) => void;
   showLogsTab: boolean;
 };
 
@@ -20,12 +23,42 @@ const pages = [
   { view: "logs", label: "logs", icon: Logs },
 ] as const;
 
-export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, showLogsTab }: AppSidebarProps) {
+const MIN_WIDTH = 160;
+const MAX_WIDTH = 360;
+const clampWidth = (width: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
+
+export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, width, onWidthChange, showLogsTab }: AppSidebarProps) {
   const { t } = useTranslation();
   const toggleLabel = t(collapsed ? "header.expand_sidebar" : "header.collapse_sidebar");
+  const [resizingWidth, setResizingWidth] = useState<number | null>(null);
+  const drag = useRef<{ startX: number; startWidth: number; width: number } | null>(null);
+  const isResizing = resizingWidth !== null;
+
+  useEffect(() => {
+    if (!isResizing) return;
+    const resize = (event: MouseEvent) => {
+      if (!drag.current) return;
+      drag.current.width = clampWidth(drag.current.startWidth + event.clientX - drag.current.startX);
+      setResizingWidth(drag.current.width);
+    };
+    const finishResize = () => {
+      if (!drag.current) return;
+      onWidthChange(drag.current.width);
+      drag.current = null;
+      setResizingWidth(null);
+    };
+    window.addEventListener("mousemove", resize);
+    window.addEventListener("mouseup", finishResize);
+    window.addEventListener("blur", finishResize);
+    return () => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", finishResize);
+      window.removeEventListener("blur", finishResize);
+    };
+  }, [isResizing, onWidthChange]);
 
   return (
-    <aside data-app-sidebar className={`flex h-full shrink-0 flex-col border-r border-border/80 bg-surface ${collapsed ? "w-16" : "w-52"}`}>
+    <aside data-app-sidebar style={{ width: collapsed ? 64 : resizingWidth ?? width }} className="relative flex h-full shrink-0 flex-col border-r border-border/80 bg-surface">
       <div className={`flex h-16 shrink-0 items-center gap-2 px-3 ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed ? <span className="truncate text-sm font-semibold tracking-tight" title={t("header.app_title")}>Codex Usage</span> : null}
         <button type="button" onClick={onToggleCollapsed} aria-label={toggleLabel} title={toggleLabel} aria-expanded={!collapsed} aria-controls="app-navigation" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
@@ -48,6 +81,32 @@ export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, s
           {!collapsed ? <span>{t("common.settings")}</span> : null}
         </button>
       </div>
+      {!collapsed ? (
+        <div
+          role="separator"
+          tabIndex={0}
+          aria-label={t("header.resize_sidebar")}
+          aria-orientation="vertical"
+          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={MAX_WIDTH}
+          aria-valuenow={resizingWidth ?? width}
+          className="absolute inset-y-0 -right-1 z-20 w-2 cursor-col-resize touch-none select-none outline-none after:absolute after:inset-y-0 after:left-1/2 after:w-0.5 hover:after:bg-primary/50 focus-visible:after:bg-primary"
+          onMouseDown={(event) => {
+            if (event.button !== 0 || drag.current) return;
+            event.preventDefault();
+            event.currentTarget.focus();
+            drag.current = { startX: event.clientX, startWidth: width, width };
+            setResizingWidth(width);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+            event.preventDefault();
+            onWidthChange(clampWidth(width + (event.key === "ArrowRight" ? 8 : -8)));
+          }}
+        >
+          {resizingWidth !== null ? <div className="fixed inset-0 cursor-col-resize" /> : null}
+        </div>
+      ) : null}
     </aside>
   );
 }

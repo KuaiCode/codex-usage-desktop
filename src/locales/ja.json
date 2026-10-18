@@ -31,6 +31,7 @@
     "navigation": "メインナビゲーション",
     "collapse_sidebar": "サイドバーを折りたたむ",
     "expand_sidebar": "サイドバーを展開",
+    "resize_sidebar": "サイドバーの幅を変更",
     "app_title": "Codex Usage Desktop",
     "upgrade": "v{{version}} に更新",
     "downloading_update": "ダウンロード中...",
