@@ -1,5 +1,6 @@
 {
   "common": {
+    "back": "返回",
     "dashboard": "儀表板",
     "model": "模型",
     "daily": "按日",
@@ -27,6 +28,9 @@
     "percent": "佔比"
   },
   "header": {
+    "navigation": "主導覽",
+    "collapse_sidebar": "收合側欄",
+    "expand_sidebar": "展開側欄",
     "app_title": "Codex Usage Desktop",
     "upgrade": "升級至 v{{version}}",
     "downloading_update": "正在下載...",
@@ -689,7 +693,7 @@
     "display_title": "介面顯示設定",
     "display_desc": "自訂儀表板介面的功能模組。",
     "show_logs_title": "顯示日誌分頁",
-    "show_logs_desc": "在頂部導覽欄顯示「日誌」分頁，用於即時查看本地執行日誌。",
+    "show_logs_desc": "在左側導覽欄顯示「日誌」分頁，用於即時查看本地執行日誌。",
     "toggle_logs_aria": "切換顯示日誌分頁",
     "auto_refresh_title": "儀表板自動重新整理",
     "auto_refresh_desc": "選擇在背景自動重新整理使用資料的時間間隔。",

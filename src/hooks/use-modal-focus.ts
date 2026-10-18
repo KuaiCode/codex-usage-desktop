@@ -9,15 +9,12 @@ export function useModalFocus(
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
     // Preserve the opener when StrictMode replays effects while the background is inert.
     if (previousFocusRef.current === null && document.activeElement instanceof HTMLElement) {
       previousFocusRef.current = document.activeElement;
     }
-    document.body.style.overflow = "hidden";
     closeButtonRef.current?.focus({ preventScroll: true });
     return () => {
-      document.body.style.overflow = previousOverflow;
       previousFocusRef.current?.focus({ preventScroll: true });
     };
   }, [closeButtonRef]);
@@ -26,10 +23,10 @@ export function useModalFocus(
     if (!isActive) return;
 
     const focusableElements = () => Array.from(
-      dialogRef.current?.querySelectorAll<HTMLElement>(
+      document.querySelectorAll<HTMLElement>(
         'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ) ?? [],
-    ).filter((element) => !element.closest('[hidden], [inert], [aria-hidden="true"]'));
+      ),
+    ).filter((element) => (dialogRef.current?.contains(element) || element.closest("[data-app-sidebar]")) && !element.closest('[hidden], [inert], [aria-hidden="true"]'));
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.defaultPrevented) return;
@@ -54,7 +51,7 @@ export function useModalFocus(
     }
 
     function handleFocus(event: FocusEvent) {
-      if (event.target instanceof Node && !dialogRef.current?.contains(event.target)) {
+      if (event.target instanceof Node && !dialogRef.current?.contains(event.target) && !(event.target instanceof Element && event.target.closest("[data-app-sidebar]"))) {
         closeButtonRef.current?.focus({ preventScroll: true });
       }
     }

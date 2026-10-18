@@ -1,5 +1,6 @@
 {
   "common": {
+    "back": "Back",
     "dashboard": "Dashboard",
     "model": "Model",
     "daily": "Daily",
@@ -27,6 +28,9 @@
     "percent": "Percent"
   },
   "header": {
+    "navigation": "Main navigation",
+    "collapse_sidebar": "Collapse sidebar",
+    "expand_sidebar": "Expand sidebar",
     "app_title": "Codex Usage Desktop",
     "upgrade": "Upgrade v{{version}}",
     "downloading_update": "Downloading...",
@@ -681,7 +685,7 @@
     "display_title": "Display Settings",
     "display_desc": "Customize the dashboard user interface.",
     "show_logs_title": "Show Logs Tab",
-    "show_logs_desc": "Display the 'Logs' tab in the navigation header to view real-time log output.",
+    "show_logs_desc": "Display the 'Logs' tab in the left sidebar to view real-time log output.",
     "toggle_logs_aria": "Toggle Logs Tab",
     "auto_refresh_title": "Dashboard Auto-refresh",
     "auto_refresh_desc": "Choose how often usage data is refreshed in the background.",

@@ -1,5 +1,6 @@
 {
   "common": {
+    "back": "戻る",
     "dashboard": "ダッシュボード",
     "model": "モデル",
     "daily": "日別",
@@ -27,6 +28,9 @@
     "percent": "割合"
   },
   "header": {
+    "navigation": "メインナビゲーション",
+    "collapse_sidebar": "サイドバーを折りたたむ",
+    "expand_sidebar": "サイドバーを展開",
     "app_title": "Codex Usage Desktop",
     "upgrade": "v{{version}} に更新",
     "downloading_update": "ダウンロード中...",
@@ -720,7 +724,7 @@
     "display_title": "表示設定",
     "display_desc": "ダッシュボードのユーザー インターフェイスをカスタマイズします。",
     "show_logs_title": "「ログ」タブを表示",
-    "show_logs_desc": "リアルタイムのログ出力を表示するには、ナビゲーション ヘッダーの [ログ] タブを表示します。",
+    "show_logs_desc": "リアルタイムのログ出力を表示するには、左サイドバーの [ログ] タブを表示します。",
     "toggle_logs_aria": "「ログ」タブの切り替え",
     "auto_refresh_title": "ダッシュボードの自動更新",
     "auto_refresh_desc": "バックグラウンドで利用状況データを更新する間隔を選択します。",

@@ -9,14 +9,11 @@ import dayjs from "dayjs";
 export type DashboardView = "dashboard" | "models" | "projects" | "daily" | "monthly" | "sessions" | "settings" | "logs";
 
 type DashboardHeaderProps = {
-  view: DashboardView;
-  onViewChange: (view: DashboardView) => void;
   updateInfo: UpdateCheckResponse | null;
   isUpdateDismissed: boolean;
   updateInstallStatus: UpdateInstallStatus;
   updateProgress: UpdateProgressState;
   onUpgrade: () => void;
-  showLogsTab?: boolean;
   onRefresh: () => void;
   isRefreshing: boolean;
   isBusy: boolean;
@@ -26,14 +23,11 @@ type DashboardHeaderProps = {
 };
 
 export function DashboardHeader({
-  view,
-  onViewChange,
   updateInfo,
   isUpdateDismissed,
   updateInstallStatus,
   updateProgress,
   onUpgrade,
-  showLogsTab = false,
   onRefresh,
   isRefreshing,
   isBusy,
@@ -71,120 +65,8 @@ export function DashboardHeader({
 
   return (
     <header className="pb-2">
-      <div className="flex items-end justify-between border-b border-border/80">
-        <div className="flex items-center gap-4 -mb-px min-w-0">
-          <nav className="flex max-w-full items-center gap-6 overflow-x-auto sm:gap-8" aria-label={t("range_switcher.aria_select_range")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "dashboard"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "dashboard"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("dashboard")}
-            >
-              {t("common.dashboard")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "sessions"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "sessions"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("sessions")}
-            >
-              {t("common.sessions")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="models-nav-tab"
-              aria-selected={view === "models"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "models"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("models")}
-            >
-              {t("common.model")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="daily-nav-tab"
-              aria-selected={view === "daily"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "daily"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("daily")}
-            >
-              {t("common.daily")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="monthly-nav-tab"
-              aria-selected={view === "monthly"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "monthly"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("monthly")}
-            >
-              {t("common.monthly")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="projects-nav-tab"
-              aria-selected={view === "projects"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "projects"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("projects")}
-            >
-              {t("common.project")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "settings"}
-              className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                view === "settings"
-                  ? "border-primary text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => onViewChange("settings")}
-            >
-              {t("common.settings")}
-            </button>
-            {showLogsTab && (
-              <button
-                type="button"
-                role="tab"
-                aria-selected={view === "logs"}
-                className={`border-b-2 px-0 pb-2 pt-1 text-sm font-medium transition ${
-                  view === "logs"
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => onViewChange("logs")}
-              >
-                {t("common.logs")}
-              </button>
-            )}
-          </nav>
+      <div className="flex min-h-10 items-center justify-between gap-4 border-b border-border/80">
+        <div className="min-w-0">
           {updateInfo?.hasUpdate && isUpdateDismissed && (
             <button
               type="button"

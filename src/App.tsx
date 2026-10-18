@@ -2,7 +2,8 @@ import { CodexLimitsCard } from "@/components/codex-limits-card";
 import { CodexResetHistoryModal } from "@/components/codex-reset-history";
 import { DailyUsageTable } from "@/components/daily-usage-table";
 import { DashboardHeroCard } from "@/components/dashboard-hero-card";
-import { DashboardHeader } from "@/components/dashboard-header";
+import { AppSidebar } from "@/components/app-sidebar";
+import { DashboardHeader, type DashboardView } from "@/components/dashboard-header";
 import { LoadingState } from "@/components/loading-state";
 import { LogPanel } from "@/components/log-panel";
 import { ModelsPage } from "@/components/models-page";
@@ -19,13 +20,15 @@ import { buildMetricCards, getRangeLabel } from "@/lib/usage-dashboard";
 import { getReleaseNotes } from "@/lib/release-notes";
 import type { SessionDetailRow } from "@/lib/api";
 import { useEffect, useMemo, useState } from "react";
-import { Sparkles, X, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Sparkles, X, ChevronDown, ChevronUp, AlertTriangle, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
 
 export default function App() {
   const { t, i18n } = useTranslation();
   const [showNotes, setShowNotes] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [settingsReturnView, setSettingsReturnView] = useState<DashboardView>("dashboard");
   const [selectedSessionDate, setSelectedSessionDate] = useState<string | null>(null);
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<{
     project: string;
@@ -139,42 +142,61 @@ export default function App() {
         : t("update.downloading_progress", { percent: updateProgress.percent })
       : t("update.upgrade_now");
 
+  const navigate = (nextView: DashboardView) => {
+    if (nextView === "settings" && view !== "settings") setSettingsReturnView(view);
+    if (nextView !== "sessions" && nextView !== "settings") {
+      setSelectedSessionDate(null);
+      setSelectedProjectFilter(null);
+    }
+    setSelectedProjectForModal(null);
+    setSelectedSession(null);
+    setIsResetHistoryOpen(false);
+    void handleViewChange(nextView);
+  };
+
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+      {view !== "settings" ? (
+        <AppSidebar
+          view={view}
+          onViewChange={navigate}
+          collapsed={sidebarCollapsed}
+          onToggleCollapsed={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          showLogsTab={showLogsTab}
+        />
+      ) : null}
+      <div className="relative min-w-0 flex-1 overflow-hidden" data-app-content>
       <div
-        className="relative mx-auto flex min-h-screen w-full max-w-layout flex-col px-6 pb-8 pt-3 sm:px-8 lg:px-10"
+        className="h-full overflow-y-auto"
         aria-hidden={selectedProjectForModal || selectedSession || isResetHistoryOpen ? "true" : undefined}
         inert={selectedProjectForModal || selectedSession || isResetHistoryOpen ? true : undefined}
       >
+      <div className="relative mx-auto flex min-h-full w-full max-w-layout flex-col px-6 pb-8 pt-3 sm:px-8 lg:px-10">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute right-10 top-3 h-40 w-40 rounded-full bg-[radial-gradient(circle,_rgba(10,10,10,0.08)_1px,_transparent_1px)] bg-[length:14px_14px] opacity-60"
         />
 
-        <DashboardHeader
-          view={view}
-          onViewChange={(nextView) => {
-            if (nextView !== "sessions") {
-              setSelectedSessionDate(null);
-              setSelectedProjectFilter(null);
-            }
-            setSelectedProjectForModal(null);
-            setSelectedSession(null);
-            void handleViewChange(nextView);
-          }}
+        {view === "settings" ? (
+          <header className="flex items-center gap-3 border-b border-border/80 pb-3">
+            <Button variant="secondary" size="sm" onClick={() => navigate(settingsReturnView === "logs" && !showLogsTab ? "dashboard" : settingsReturnView)}>
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              {t("common.back")}
+            </Button>
+          </header>
+        ) : <DashboardHeader
           updateInfo={updateInfo}
           isUpdateDismissed={isUpdateDismissed}
           updateInstallStatus={updateInstallStatus}
           updateProgress={updateProgress}
           onUpgrade={() => void handleUpgrade()}
-          showLogsTab={showLogsTab}
           onRefresh={() => void handleRefresh()}
           isRefreshing={isRefreshing}
           isBusy={isLoading || isRefreshing || isResetting || isExporting !== null}
           overview={overview}
           scanMessage={scanMessage}
           lastRescanDurationMs={lastRescanDurationMs}
-        />
+        />}
 
         <main className={view === "dashboard" ? "flex-1 py-3" : "flex-1 py-6"}>
           {updateInfo?.hasUpdate && !isUpdateDismissed ? (
@@ -449,6 +471,7 @@ export default function App() {
 
         </main>
       </div>
+      </div>
       {selectedProjectForModal && (
         <ProjectSessionsModal
           project={selectedProjectForModal}
@@ -479,6 +502,7 @@ export default function App() {
       {isResetHistoryOpen ? (
         <CodexResetHistoryModal onClose={() => setIsResetHistoryOpen(false)} />
       ) : null}
+      </div>
     </div>
   );
 }

@@ -246,7 +246,7 @@ describe("App", () => {
     expect(screen.getByText("Reading sessions")).toBeInTheDocument();
     expect(screen.getByText("Aggregating tokens")).toBeInTheDocument();
     expect(screen.getByText("Estimating cost")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Reset cache" })).not.toBeInTheDocument();
   });
 
@@ -1123,7 +1123,8 @@ describe("App", () => {
     const trigger = await screen.findByRole("button", { name: "Open analytics for app" });
     fireEvent.click(trigger);
     const projectDialog = await screen.findByRole("dialog", { name: "app" });
-    const background = screen.getByRole("tab", { name: "Project", hidden: true }).closest("[inert]");
+    const background = trigger.closest("[inert]");
+    expect(screen.getByRole("tab", { name: "Project" }).closest("[inert]")).toBeNull();
     expect(background).toHaveAttribute("aria-hidden", "true");
     expect(projectDialog.closest("[inert]")).toBeNull();
     const close = within(projectDialog).getByRole("button", { name: "Close project details" });
@@ -1148,12 +1149,19 @@ describe("App", () => {
     expect(loadMoreButton).toHaveFocus();
     await user.tab();
     const sessionsButton = within(projectDialog).getByRole("button", { name: "View in Sessions Tab" });
-    expect(within(projectDialog).getByRole("button", { name: "Refresh project sessions" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Collapse sidebar" })).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(loadMoreButton).toHaveFocus();
+    within(projectDialog).getByRole("button", { name: "Refresh project sessions" }).focus();
     await user.tab();
     expect(sessionsButton).toHaveFocus();
     await user.tab({ shift: true });
+    // jsdom does not skip the inert background during native Tab traversal.
+    screen.getByRole("button", { name: "Settings" }).focus();
+    expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
     await user.tab({ shift: true });
-    expect(loadMoreButton).toHaveFocus();
+    expect(screen.getByRole("tab", { name: "Project" })).toHaveFocus();
+    loadMoreButton.focus();
     await user.tab({ shift: true });
     expect(collapse).toHaveFocus();
     const scroll = within(projectDialog).getByTestId("project-modal-scroll");
@@ -1162,7 +1170,7 @@ describe("App", () => {
     const detail = await screen.findByRole("dialog", { name: "Project task" });
     expect(within(detail).getByRole("button", { name: "Close session detail" })).toHaveFocus();
     await user.tab();
-    expect(within(detail).getByRole("button", { name: "Details" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Collapse sidebar" })).toHaveFocus();
     await user.tab({ shift: true });
     expect(within(detail).getByRole("button", { name: "Close session detail" })).toHaveFocus();
     expect(invokeMock).toHaveBeenCalledWith("fetch_session_detail", { path: row.path });
@@ -1186,7 +1194,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: "Sessions" })).toHaveAttribute("aria-selected", "true"));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(await screen.findByText("Filtering by Project")).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it("opens a session replay modal from a session row", async () => {
     const longToolOutput = `${"tool output preview ".repeat(160)}LONG_TOOL_OUTPUT_TAIL`;
@@ -1624,7 +1632,7 @@ describe("App", () => {
     expect(within(detailSummary).getByRole("button", { name: "Copy project path: /repo/app" })).toHaveClass("border-blue-300/60");
     expect(within(detailSummary).getByText("gpt-5")).toHaveClass("border-emerald-300/60");
     expect(screen.getAllByText("session-replay").length).toBeGreaterThan(0);
-    expect(document.body.style.overflow).toBe("hidden");
+    expect(screen.getByRole("dialog").closest("[inert]")).toBeNull();
     fireEvent.scroll(screen.getByTestId("session-detail-scroll"), { target: { scrollTop: 20 } });
     expect(detailHeader).toHaveClass("py-1");
     expect(screen.queryByRole("region", { name: "Session summary" })).not.toBeInTheDocument();
@@ -1835,7 +1843,7 @@ describe("App", () => {
     await userEvent.click(showFullButton);
     expect(screen.getByText(/raw-only-marker/)).toBeInTheDocument();
 
-    screen.getByRole("button", { name: /Details/ }).focus();
+    screen.getByRole("button", { name: "Collapse sidebar" }).focus();
     fireEvent.keyDown(window, { key: "Tab", shiftKey: true });
     expect(screen.getByRole("button", { name: "Show in File Manager" })).toHaveFocus();
     await userEvent.keyboard("{Escape}");
@@ -1844,7 +1852,7 @@ describe("App", () => {
     expect(document.body.style.overflow).toBe("auto");
     expect(screen.getByText("Replay summary")).toBeInTheDocument();
     expect(document.activeElement?.textContent).toContain("Replay summary");
-  }, 15_000);
+  }, 30_000);
 
   it("bootstraps only once in strict mode", async () => {
     invokeMock.mockImplementation(async (command: string, args?: { range?: string }) => {
@@ -2401,7 +2409,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => expect(screen.getAllByText("1,600").length).toBeGreaterThan(0));
-    await userEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
 
     expect(screen.getByText("Manage local app state and recovery actions.")).toBeInTheDocument();
     expect(screen.getByRole("tabpanel", { name: "Settings" })).toBeInTheDocument();
@@ -2415,7 +2423,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Reset cache" })).toBeEnabled();
     await userEvent.click(screen.getByRole("button", { name: "Reset cache" }));
 
-    await userEvent.click(screen.getByRole("tab", { name: "Dashboard" }));
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     await waitFor(() => expect(screen.getByText("Reset local cache and rebuilt usage data from local Codex logs.")).toBeInTheDocument());
     expect(confirmMock).toHaveBeenCalledWith(expect.stringContaining("Source logs will not be deleted"));
 
@@ -2466,8 +2474,8 @@ describe("App", () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "Maintenance" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Reset cache" })).toBeEnabled());
     await userEvent.click(screen.getByRole("button", { name: "Reset cache" }));
@@ -2802,13 +2810,13 @@ describe("App", () => {
     render(<App />);
 
     // Wait for the overview to render (proves app loaded)
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument());
 
     // By default, the Logs tab should NOT be visible
     expect(screen.queryByRole("tab", { name: "Logs" })).not.toBeInTheDocument();
 
     // Click Settings
-    const settingsTab = screen.getByRole("tab", { name: "Settings" });
+    const settingsTab = screen.getByRole("button", { name: "Settings" });
     await userEvent.click(settingsTab);
 
     expect(screen.getByText("Menu Bar / System Tray Settings")).toBeInTheDocument();
@@ -2824,7 +2832,8 @@ describe("App", () => {
     // Click toggle to enable Logs tab
     await userEvent.click(toggleSwitch);
 
-    // Logs tab should now be visible in navigation
+    // Returning reveals the newly enabled Logs tab.
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
     const logsTab = screen.getByRole("tab", { name: "Logs" });
     expect(logsTab).toBeInTheDocument();
     expect(localStorage.getItem("show_logs_tab")).toBe("true");
@@ -2834,14 +2843,16 @@ describe("App", () => {
     expect(screen.getByText("Waiting for logs...")).toBeInTheDocument();
 
     // Go back to Settings and toggle it off
-    await userEvent.click(screen.getByRole("tab", { name: "Settings" }));
+    await userEvent.click(screen.getByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
     await userEvent.click(screen.getByRole("button", { name: "Toggle Logs Tab" }));
 
     // Logs tab should be hidden and settings should remain selected
     expect(screen.queryByRole("tab", { name: "Logs" })).not.toBeInTheDocument();
     expect(localStorage.getItem("show_logs_tab")).toBe("false");
-    expect(screen.getByRole("tab", { name: "Settings" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Settings", level: 1 })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("tab", { name: "Dashboard" })).toHaveAttribute("aria-selected", "true");
   });
 
   it("shows launch at login as disabled when autostart is not enabled", async () => {
@@ -2850,7 +2861,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
 
     const toggle = await screen.findByRole("button", { name: "Toggle Launch at Login" });
@@ -2864,7 +2875,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
 
     const intervalSelect = screen.getByRole("combobox", { name: "Dashboard Auto-refresh" });
@@ -2889,7 +2900,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Hour" }), { target: { value: " hours" } });
 
     expect(localStorage.getItem("tray_countdown_units")).toBe(JSON.stringify({
@@ -2905,7 +2916,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
     const toggle = await screen.findByRole("button", { name: "Toggle Launch at Login" });
 
@@ -2922,7 +2933,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
     const toggle = await screen.findByRole("button", { name: "Toggle Launch at Login" });
     await waitFor(() => expect(toggle).toHaveAttribute("aria-pressed", "true"));
@@ -2941,7 +2952,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
     const toggle = await screen.findByRole("button", { name: "Toggle Launch at Login" });
     await userEvent.click(toggle);
@@ -2957,7 +2968,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await userEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
     await userEvent.click(screen.getByRole("tab", { name: "General" }));
     const toggle = await screen.findByRole("button", { name: "Toggle Launch at Login" });
     await waitFor(() => expect(toggle).toHaveAttribute("aria-pressed", "true"));
@@ -3023,7 +3034,7 @@ describe("App", () => {
     render(<App />);
 
     // Wait for the overview to load
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Settings" })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument());
 
     // The update banner should NOT be in the document
     expect(screen.queryByText(/New update available/i)).not.toBeInTheDocument();

@@ -6,7 +6,7 @@ describe("language startup", () => {
     try {
       await browser.execute(() => localStorage.setItem("language", "ja"));
       await browser.refresh();
-      await expect($('//button[@role="tab" and normalize-space()="設定"]')).toBeDisplayed();
+      await expect($('//button[@aria-label="設定"]')).toBeDisplayed();
     } finally {
       await browser.execute((language) => {
         if (language === null) localStorage.removeItem("language");
@@ -20,7 +20,7 @@ describe("language startup", () => {
     try {
       await browser.execute(() => localStorage.setItem("language", "en"));
       await browser.refresh();
-      const settingsTab = $('//button[@role="tab" and normalize-space()="Settings"]');
+      const settingsTab = $('//button[@aria-label="Settings"]');
       await expect(settingsTab).toBeDisplayed();
       await settingsTab.click();
 
@@ -32,8 +32,8 @@ describe("language startup", () => {
       await expect(traditionalOption).toBeDisplayed();
       await traditionalOption.click();
 
-      const translatedSettingsTab = $('//button[@role="tab" and normalize-space()="設定"]');
-      await expect(translatedSettingsTab).toBeDisplayed();
+      const translatedSettingsTab = $('//button[@aria-label="設定"]');
+      await expect($('h1=設定')).toBeDisplayed();
       await expect($('h3=語言設定')).toBeDisplayed();
       await expect($('//button[@role="combobox" and normalize-space()="繁體中文"]')).toBeDisplayed();
       expect(await browser.execute(() => localStorage.getItem("language"))).toBe("zh-Hant");

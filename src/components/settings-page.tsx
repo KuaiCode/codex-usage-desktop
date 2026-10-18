@@ -536,7 +536,7 @@ export function SettingsPage({
   return (
     <div className="max-w-5xl space-y-4">
       <div className="space-y-1">
-        <h2 className="text-2xl font-semibold tracking-tight text-foreground">{t("settings.title")}</h2>
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">{t("settings.title")}</h1>
         <p className="text-sm text-muted-foreground">{t("settings.subtitle")}</p>
       </div>
 

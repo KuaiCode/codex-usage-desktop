@@ -311,14 +311,13 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
   return isFullscreen
     ? createPortal(
         <div
-          className="fixed inset-0 z-[100] flex bg-background p-3 sm:p-5"
+          className="absolute inset-0 z-[100] flex bg-background p-3 sm:p-5"
           role="dialog"
           aria-label={title ?? t("trends.title")}
-          aria-modal="true"
         >
           {card}
         </div>,
-        document.body,
+        document.querySelector("[data-app-content]") ?? document.body,
       )
     : card;
 }

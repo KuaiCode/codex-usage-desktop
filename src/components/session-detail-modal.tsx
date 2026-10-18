@@ -1338,12 +1338,11 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
   return (
     <div
       ref={dialogRef}
-      className="fixed inset-0 z-50 flex overscroll-contain bg-background text-foreground"
+      className="absolute inset-0 z-50 flex overscroll-contain bg-background text-foreground"
       role="dialog"
-      aria-modal="true"
       aria-labelledby="session-detail-title"
     >
-      <div className="flex h-screen w-full flex-col overflow-hidden overscroll-contain">
+      <div className="flex h-full w-full flex-col overflow-hidden overscroll-contain">
         <header className={`z-10 shrink-0 border-b border-border/70 bg-surface px-4 shadow-sm transition-[padding] motion-reduce:transition-none ${isScrolled ? "py-1" : "py-1.5"}`}>
           <div className="flex min-h-8 items-center gap-2">
             <div className="min-w-0 flex-1">

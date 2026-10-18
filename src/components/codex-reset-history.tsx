@@ -401,9 +401,8 @@ export function CodexResetHistoryModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-3 backdrop-blur-md"
       role="dialog"
-      aria-modal="true"
       aria-labelledby="codex-reset-history-title"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();

@@ -192,7 +192,7 @@ export function ProjectSessionsModal({ project, range, onClose, onGoToSessions, 
   const tokenAxisWidth = getYAxisWidth(maxDailyTokens, formatCompactNumber, 64);
   const costAxisWidth = getYAxisWidth(maxDailyCost, formatCurrencyShort, 72);
 
-  return <div ref={dialogRef} className="fixed inset-0 z-50 flex flex-col overflow-hidden overscroll-contain bg-background text-foreground" role="dialog" aria-modal={isActive ? "true" : undefined} aria-labelledby="modal-project-title" aria-hidden={!isActive} inert={!isActive}>
+  return <div ref={dialogRef} className="absolute inset-0 z-50 flex flex-col overflow-hidden overscroll-contain bg-background text-foreground" role="dialog" aria-labelledby="modal-project-title" aria-hidden={!isActive} inert={!isActive}>
     <header className="shrink-0 border-b border-border/70 bg-surface px-4 py-1.5 shadow-sm" data-testid="project-modal-header">
       <div className="flex min-h-8 items-center gap-2">
         <Folder className="h-4 w-4 shrink-0 text-primary" />
