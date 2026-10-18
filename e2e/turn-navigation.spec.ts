@@ -19,7 +19,9 @@ describe("session turn navigation", () => {
       ...[1, 2, 3].flatMap((turn) => [
         { type: "turn_context", payload: { turn_id: `nav-${turn}`, model: "gpt-5" } },
         { type: "event_msg", payload: { type: "task_started", turn_id: `nav-${turn}` } },
-        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `Navigate turn ${turn}\nSecond prompt line\nThird prompt line\nFourth prompt line: verify that the full user message is available without the previous 140-character truncation.` }] } },
+        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "  # AGENTS.md instructions for /turn-navigation-test\n\n<INSTRUCTIONS>\nFollow repository guidelines.\n</INSTRUCTIONS>\n<environment_context>\n  <cwd>/turn-navigation-test</cwd>\n</environment_context>" }] } },
+        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "<environment_context>\n  <cwd>/turn-navigation-test</cwd>\n</environment_context>" }] } },
+        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `Navigate turn ${turn}\nCheck AGENTS.md\nThird prompt line\nFourth prompt line: verify that the full user message is available without the previous 140-character truncation.` }] } },
         ...Array.from({ length: 14 }, (_, step) => ({
           type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: `Turn ${turn}, step ${step + 1}.\n\nChecking the replay navigation.\n\nThis content makes the turn taller than the viewport.` }] },
         })),
@@ -43,6 +45,7 @@ describe("session turn navigation", () => {
         return runtime.invoke<SessionReplayDetail>("fetch_session_detail", { path });
       }, path);
       expect(detail.turns.map((turn) => turn.turnId)).toEqual(["nav-1", "nav-2", "nav-3"]);
+      expect(detail.turns[0].userMessages[0].text).toContain("# AGENTS.md instructions for");
 
       await browser.refresh();
       const sessionsTab = $('button[role="tab"]=Sessions');
@@ -94,12 +97,16 @@ describe("session turn navigation", () => {
       expect(layout.fitsViewport).toBe(true);
       expect(layout.overflows).toBe(false);
       const navigationText = await navigation.getText();
+      expect(navigationText).not.toContain("AGENTS.md instructions");
+      expect(navigationText).not.toContain("environment_context");
+      expect(navigationText).toContain("Check AGENTS.md");
       for (const turn of [1, 2, 3]) {
         expect(navigationText).toContain(`Navigate turn ${turn}`);
         expect(navigationText).not.toContain(`nav-${turn}`);
       }
       for (const button of await navigation.$$('button')) {
         expect(await button.getText()).toBe("");
+        await expect(button).not.toHaveAttribute("aria-label", /AGENTS\.md instructions|environment_context/);
         await expect(button).toHaveAttribute("title", /Navigate to (start|end) of turn/);
       }
       const firstStart = navigation.$('button[aria-label^="Navigate to start of turn nav-1"]');

@@ -1518,7 +1518,12 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
                   <div className="space-y-0.5">
                     {detail.turns.map((turn, index) => {
                       const turnKey = `${turn.turnId}-${index}`;
-                      const preview = turn.userMessages.find((message) => message.text.trim().length > 0)?.text.trim() ?? "";
+                      const preview = turn.userMessages.find((message) => {
+                        const text = message.text.trim();
+                        return text.length > 0
+                          && !text.startsWith("# AGENTS.md instructions for ")
+                          && !text.startsWith("<environment_context>");
+                      })?.text.trim() ?? "";
                       const isActive = activeTurnKey === turnKey;
                       return (
                         <div
