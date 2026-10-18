@@ -156,7 +156,8 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background text-foreground">
+    <div className="relative flex h-screen overflow-hidden bg-background text-foreground">
+      <div data-tauri-drag-region aria-hidden="true" className="absolute inset-x-0 top-0 z-10 h-[var(--window-controls-height)] select-none" />
       {view !== "settings" ? (
         <AppSidebar
           view={view}
@@ -169,7 +170,7 @@ export default function App() {
         />
       ) : null}
       <div className="relative flex min-w-0 flex-1 flex-col bg-background">
-      <div data-tauri-drag-region aria-hidden="true" className={`shrink-0 select-none ${view === "settings" ? "h-[var(--window-controls-height)]" : "absolute inset-x-0 top-0 z-10 h-[var(--window-drag-height)]"}`} />
+      {view === "settings" ? <div aria-hidden="true" className="h-[var(--window-controls-height)] shrink-0" /> : null}
       <div className="relative min-h-0 flex-1 overflow-hidden" data-app-content>
       <div
         className="h-full overflow-y-auto"

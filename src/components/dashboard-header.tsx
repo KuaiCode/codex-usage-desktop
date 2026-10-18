@@ -72,7 +72,7 @@ export function DashboardHeader({
               type="button"
               onClick={onUpgrade}
               disabled={isInstallingUpdate}
-              className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-2.5 py-0.5 text-[10px] font-semibold text-white shadow-md shadow-indigo-500/20 hover:from-indigo-400 hover:to-purple-500 hover:shadow-indigo-500/30 transition-all duration-200 animate-pulse hover:animate-none active:scale-95 cursor-pointer mb-2"
+              className="relative z-20 inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-indigo-500 to-purple-600 px-2.5 py-0.5 text-[10px] font-semibold text-white shadow-md shadow-indigo-500/20 hover:from-indigo-400 hover:to-purple-500 hover:shadow-indigo-500/30 transition-all duration-200 animate-pulse hover:animate-none active:scale-95 cursor-pointer mb-2"
               title={t("header.upgrade_title")}
             >
               <Sparkles className="h-3 w-3 animate-pulse" />
@@ -98,7 +98,7 @@ export function DashboardHeader({
               </div>
             </div>
           )}
-          <Button variant="primary" size="sm" onClick={onRefresh} disabled={isBusy}>
+          <Button variant="primary" size="sm" className="relative z-20" onClick={onRefresh} disabled={isBusy}>
             <RefreshCcw className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
             {t("hero.rescan", { defaultValue: "Rescan local logs" })}
           </Button>

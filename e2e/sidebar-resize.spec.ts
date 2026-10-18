@@ -7,30 +7,49 @@ describe("sidebar resizing", () => {
     const sidebar = $("[data-app-sidebar]");
     const handle = $('[role="separator"][aria-label="Resize sidebar"]');
     await handle.waitForDisplayed();
+    await $("button=Rescan local logs").waitForEnabled({ timeout: 90_000 });
     expect(await sidebar.getSize("width")).toBe(208);
 
     const expectWindowBackgrounds = async () => {
       const layout = await browser.execute(() => {
         const sidebar = document.querySelector("[data-app-sidebar]")!;
         const content = document.querySelector("[data-app-content]")!.parentElement!;
-        const dragRegion = sidebar.querySelector("[data-tauri-drag-region]")!;
+        const spacer = sidebar.firstElementChild!;
+        const dragRegion = document.querySelector("[data-tauri-drag-region]")!;
+        const dragBounds = dragRegion.getBoundingClientRect();
+        const toggle = sidebar.querySelector("button")!;
+        const refresh = content.querySelector("header button")!;
+        const isClickable = (button: Element) => {
+          const bounds = button.getBoundingClientRect();
+          return button.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + 4));
+        };
+        const dragPoints = [12, window.innerWidth / 2, window.innerWidth - 16];
         return {
           sidebarTop: sidebar.getBoundingClientRect().top,
           contentTop: content.getBoundingClientRect().top,
           contentBodyTop: document.querySelector("[data-app-content]")!.getBoundingClientRect().top,
           sidebarColor: getComputedStyle(sidebar).backgroundColor,
           contentColor: getComputedStyle(content).backgroundColor,
-          dragHeight: dragRegion.getBoundingClientRect().height,
-          toggleTop: sidebar.querySelector("button")!.getBoundingClientRect().top,
+          spacerHeight: spacer.getBoundingClientRect().height,
+          dragHeight: dragBounds.height,
+          dragWidth: dragBounds.width,
+          windowWidth: window.innerWidth,
+          topRowDraggable: dragPoints.every((x) => document.elementFromPoint(x, 28) === dragRegion),
+          buttonsClickable: isClickable(toggle) && isClickable(refresh),
+          toggleTop: toggle.getBoundingClientRect().top,
           isMac: navigator.platform.startsWith("Mac"),
         };
       });
       expect(layout.sidebarTop).toBe(0);
       expect(layout.contentTop).toBe(0);
       expect(layout.sidebarColor).not.toBe(layout.contentColor);
-      expect(layout.dragHeight).toBe(layout.isMac ? 12 : 0);
+      expect(layout.spacerHeight).toBe(layout.isMac ? 12 : 0);
+      expect(layout.dragHeight).toBe(layout.isMac ? 36 : 0);
+      expect(layout.dragWidth).toBe(layout.windowWidth);
+      expect(layout.buttonsClickable).toBe(true);
+      if (layout.isMac) expect(layout.topRowDraggable).toBe(true);
       expect(layout.contentBodyTop).toBe(0);
-      expect(layout.toggleTop).toBeGreaterThanOrEqual(layout.dragHeight);
+      expect(layout.toggleTop).toBeGreaterThanOrEqual(layout.spacerHeight);
       if (layout.isMac) expect(layout.toggleTop).toBeLessThan(36);
     };
     await expectWindowBackgrounds();

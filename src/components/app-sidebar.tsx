@@ -59,10 +59,10 @@ export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, w
 
   return (
     <aside data-app-sidebar style={{ width: collapsed ? 64 : resizingWidth ?? width }} className="relative flex h-full shrink-0 flex-col border-r border-border/80 bg-[rgb(var(--sidebar))]">
-      <div data-tauri-drag-region aria-hidden="true" className="h-[var(--window-drag-height)] shrink-0 select-none" />
+      <div aria-hidden="true" className="h-[var(--window-drag-height)] shrink-0" />
       <div className={`flex h-16 shrink-0 items-center gap-2 px-3 ${collapsed ? "justify-center" : "justify-between"}`}>
         {!collapsed ? <span className="truncate text-sm font-semibold tracking-tight" title={t("header.app_title")}>Codex Usage</span> : null}
-        <button type="button" onClick={onToggleCollapsed} aria-label={toggleLabel} title={toggleLabel} aria-expanded={!collapsed} aria-controls="app-navigation" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
+        <button type="button" onClick={onToggleCollapsed} aria-label={toggleLabel} title={toggleLabel} aria-expanded={!collapsed} aria-controls="app-navigation" className="relative z-20 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">
           {collapsed ? <PanelLeftOpen className="h-4 w-4" aria-hidden="true" /> : <PanelLeftClose className="h-4 w-4" aria-hidden="true" />}
         </button>
       </div>
