@@ -9,6 +9,29 @@ describe("sidebar resizing", () => {
     await handle.waitForDisplayed();
     expect(await sidebar.getSize("width")).toBe(208);
 
+    const expectWindowBackgrounds = async () => {
+      const layout = await browser.execute(() => {
+        const sidebar = document.querySelector("[data-app-sidebar]")!;
+        const content = document.querySelector("[data-app-content]")!.parentElement!;
+        const dragRegion = sidebar.querySelector("[data-tauri-drag-region]")!;
+        return {
+          sidebarTop: sidebar.getBoundingClientRect().top,
+          contentTop: content.getBoundingClientRect().top,
+          sidebarColor: getComputedStyle(sidebar).backgroundColor,
+          contentColor: getComputedStyle(content).backgroundColor,
+          dragHeight: dragRegion.getBoundingClientRect().height,
+          toggleTop: sidebar.querySelector("button")!.getBoundingClientRect().top,
+          isMac: navigator.platform.startsWith("Mac"),
+        };
+      });
+      expect(layout.sidebarTop).toBe(0);
+      expect(layout.contentTop).toBe(0);
+      expect(layout.sidebarColor).not.toBe(layout.contentColor);
+      expect(layout.dragHeight).toBe(layout.isMac ? 36 : 0);
+      expect(layout.toggleTop).toBeGreaterThanOrEqual(layout.dragHeight);
+    };
+    await expectWindowBackgrounds();
+
     const dragBy = async (delta: number) => {
       const { x, y } = await handle.getLocation();
       await browser.action("pointer")
@@ -40,6 +63,7 @@ describe("sidebar resizing", () => {
     await $('button[aria-label="Collapse sidebar"]').click();
     expect(await sidebar.getSize("width")).toBe(64);
     await expect(handle).not.toBeExisting();
+    await expectWindowBackgrounds();
     await $('button[aria-label="Expand sidebar"]').click();
     await expectWidth(256);
 

@@ -10,6 +10,8 @@
     --background: 250 250 250;
     --foreground: 10 10 10;
     --surface: 255 255 255;
+    --sidebar: 245 244 249;
+    --window-controls-height: 0px;
     --primary: 99 102 241;
     --primary-foreground: 255 255 255;
     --secondary: 32 151 11;
@@ -28,6 +30,7 @@
       --background: 14 14 17;
       --foreground: 250 250 250;
       --surface: 24 24 27;
+      --sidebar: 24 24 27;
       --muted: 30 30 34;
       --muted-foreground: 161 161 170;
       --border: 48 48 54;
@@ -36,6 +39,10 @@
 
   * {
     @apply border-border;
+  }
+
+  :root[data-platform="macos"] {
+    --window-controls-height: 36px;
   }
 
   @media (forced-colors: none) {

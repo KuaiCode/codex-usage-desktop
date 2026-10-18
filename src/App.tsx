@@ -168,7 +168,9 @@ export default function App() {
           showLogsTab={showLogsTab}
         />
       ) : null}
-      <div className="relative min-w-0 flex-1 overflow-hidden" data-app-content>
+      <div className="flex min-w-0 flex-1 flex-col bg-background">
+      <div data-tauri-drag-region aria-hidden="true" className="h-[var(--window-controls-height)] shrink-0 select-none" />
+      <div className="relative min-h-0 flex-1 overflow-hidden" data-app-content>
       <div
         className="h-full overflow-y-auto"
         aria-hidden={selectedProjectForModal || selectedSession || isResetHistoryOpen ? "true" : undefined}
@@ -505,6 +507,7 @@ export default function App() {
       {isResetHistoryOpen ? (
         <CodexResetHistoryModal onClose={() => setIsResetHistoryOpen(false)} />
       ) : null}
+      </div>
       </div>
     </div>
   );

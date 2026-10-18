@@ -3,7 +3,11 @@ import ReactDOM from "react-dom/client";
 import "./i18n";
 import App from "./App";
 import "./styles.css";
+import { isTauri } from "@tauri-apps/api/core";
 
+if (isTauri() && navigator.platform.startsWith("Mac")) {
+  document.documentElement.dataset.platform = "macos";
+}
 
 async function renderApp() {
   if (import.meta.env.MODE === "e2e") {
