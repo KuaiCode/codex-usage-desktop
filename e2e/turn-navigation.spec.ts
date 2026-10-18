@@ -19,7 +19,7 @@ describe("session turn navigation", () => {
       ...[1, 2, 3].flatMap((turn) => [
         { type: "turn_context", payload: { turn_id: `nav-${turn}`, model: "gpt-5" } },
         { type: "event_msg", payload: { type: "task_started", turn_id: `nav-${turn}` } },
-        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `Navigate turn ${turn}: verify that the user prompt stays readable beside the expanded application sidebar.` }] } },
+        { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: `Navigate turn ${turn}\nSecond prompt line\nThird prompt line\nFourth prompt line: verify that the full user message is available without the previous 140-character truncation.` }] } },
         ...Array.from({ length: 14 }, (_, step) => ({
           type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: `Turn ${turn}, step ${step + 1}.\n\nChecking the replay navigation.\n\nThis content makes the turn taller than the viewport.` }] },
         })),
@@ -82,6 +82,57 @@ describe("session turn navigation", () => {
         expect(await button.getText()).toBe("");
         await expect(button).toHaveAttribute("title", /Navigate to (start|end) of turn/);
       }
+      const firstStart = navigation.$('button[aria-label^="Navigate to start of turn nav-1"]');
+      const firstEnd = navigation.$('button[aria-label^="Navigate to end of turn nav-1"]');
+      const cardLayout = await browser.execute(() => {
+        const button = document.querySelector('nav[aria-label="Quick navigation"] button')!;
+        const card = button.parentElement!;
+        const preview = card.querySelector("span")!;
+        const [start, end] = Array.from(card.querySelectorAll("button")).map((element) => element.getBoundingClientRect());
+        const bounds = card.getBoundingClientRect();
+        return {
+          previewLines: preview.clientHeight / parseFloat(getComputedStyle(preview).lineHeight),
+          clampedLines: getComputedStyle(preview).webkitLineClamp,
+          preservesLineBreaks: getComputedStyle(preview).whiteSpace === "pre-wrap",
+          coversCard: start.left === bounds.left && start.right === bounds.right && start.top === bounds.top
+            && start.bottom === end.top && end.left === bounds.left && end.right === bounds.right && end.bottom === bounds.bottom,
+          fullPreview: preview.textContent,
+        };
+      });
+      expect(cardLayout.previewLines).toBe(3);
+      expect(cardLayout.clampedLines).toBe("3");
+      expect(cardLayout.preservesLineBreaks).toBe(true);
+      expect(cardLayout.coversCard).toBe(true);
+      expect(cardLayout.fullPreview).toContain("without the previous 140-character truncation.");
+      expect(await firstStart.$("span").execute((element) => getComputedStyle(element).opacity)).toBe("0");
+      expect(await firstEnd.$("span").execute((element) => getComputedStyle(element).opacity)).toBe("0");
+
+      for (const position of ["start", "end"] as const) {
+        const button = position === "start" ? firstStart : firstEnd;
+        const other = position === "start" ? firstEnd : firstStart;
+        // The embedded driver dispatches synthetic mouse events, which cannot activate CSS :hover.
+        // Focus exercises the same direction indicator through its keyboard interaction instead.
+        await button.execute((element) => (element as HTMLElement).focus({ preventScroll: true }));
+        await browser.waitUntil(async () => button.$("span").execute((element) => getComputedStyle(element).opacity === "1"));
+        await browser.waitUntil(async () => other.$("span").execute((element) => getComputedStyle(element).opacity === "0"));
+        await expect(button.$("svg")).toHaveElementClass(position === "start" ? "lucide-arrow-up-to-line" : "lucide-arrow-down-to-line");
+      }
+
+      async function clickTurnHalf(turn: number, position: "start" | "end") {
+        const selector = `nav[aria-label="Quick navigation"] button[aria-label^="Navigate to ${position} of turn nav-${turn}"]`;
+        await $(selector).waitForStable();
+        const point = await browser.execute((turn, position) => {
+          const button = document.querySelector(`nav[aria-label="Quick navigation"] button[aria-label^="Navigate to ${position} of turn nav-${turn}"]`)!;
+          const bounds = button.getBoundingClientRect();
+          // Click the card's left edge, away from the direction icon.
+          const x = Math.round(bounds.left + 4);
+          const y = Math.round(bounds.top + bounds.height / 2);
+          return { x, y, hit: document.elementFromPoint(x, y)?.closest("button") === button };
+        }, turn, position);
+        expect(point.hit).toBe(true);
+        // Element-origin actions auto-scroll the sticky navigation before clicking it.
+        await browser.action("pointer").move({ x: point.x, y: point.y }).down().up().perform();
+      }
 
       for (const turn of [1, 2, 3]) {
         const toggle = dialog.$(`button*=Turn nav-${turn}`);
@@ -89,8 +140,7 @@ describe("session turn navigation", () => {
         const section = toggle.$("./parent::section");
         expect(await section.getSize("height")).toBeGreaterThan(await $('[data-testid="session-detail-scroll"]').getSize("height"));
         for (const position of ["end", "start"] as const) {
-          // Pointer actions avoid the embedded driver's post-click focus cancelling smooth scrolling.
-          await navigation.$(`button[aria-label^="Navigate to ${position} of turn nav-${turn}"]`).click({ button: "left" });
+          await clickTurnHalf(turn, position);
           await browser.waitUntil(async () => section.execute((element, position) => {
             const viewport = document.querySelector('[data-testid="session-detail-scroll"]')!.getBoundingClientRect();
             const bounds = element.getBoundingClientRect();
@@ -102,7 +152,7 @@ describe("session turn navigation", () => {
         if (turn === 2) {
           await toggle.click();
           await expect(toggle).toHaveAttribute("aria-expanded", "false");
-          await navigation.$('button[aria-label^="Navigate to end of turn nav-2"]').click({ button: "left" });
+          await clickTurnHalf(2, "end");
           await expect(toggle).toHaveAttribute("aria-expanded", "true");
           await browser.waitUntil(async () => section.execute((element) => {
             const viewport = document.querySelector('[data-testid="session-detail-scroll"]')!.getBoundingClientRect();

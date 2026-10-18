@@ -1508,31 +1508,31 @@ export function SessionDetailModal({ session, onClose, onScanComplete }: Session
                   <div className="space-y-0.5">
                     {detail.turns.map((turn, index) => {
                       const turnKey = `${turn.turnId}-${index}`;
-                      const preview = firstUserPreview(turn);
+                      const preview = turn.userMessages.find((message) => message.text.trim().length > 0)?.text.trim() ?? "";
                       const isActive = activeTurnKey === turnKey;
                       return (
                         <div
                           key={turnKey}
-                          className={`block w-full rounded-md px-2 py-1.5 text-left transition ${isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                          className={`relative block w-full rounded-md px-2 py-1.5 text-left transition ${isActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
                           aria-current={isActive ? "location" : undefined}
                         >
-                          <span className="line-clamp-2 break-words text-xs font-medium" title={preview || undefined}>
+                          <span className="line-clamp-3 min-h-12 whitespace-pre-wrap break-words text-xs font-medium" title={preview || undefined}>
                             {preview || t("sessions.detail.turn", { id: index + 1 })}
                           </span>
-                          <div className="mt-1 flex justify-end gap-1">
-                            {(["start", "end"] as const).map((position) => (
-                              <button
-                                key={position}
-                                type="button"
-                                className={`flex h-7 w-7 items-center justify-center hover:bg-primary/10 ${DISCLOSURE_BUTTON_CLASS}`}
-                                aria-label={`${t(`sessions.detail.navigate_to_turn_${position}`, { id: turn.turnId })}${preview ? `: ${preview}` : ""}`}
-                                title={t(`sessions.detail.navigate_to_turn_${position}`, { id: index + 1 })}
-                                onClick={() => scrollToTurn(turnKey, position)}
-                              >
-                                {position === "start" ? <ArrowUpToLine className="h-3.5 w-3.5" aria-hidden="true" /> : <ArrowDownToLine className="h-3.5 w-3.5" aria-hidden="true" />}
-                              </button>
-                            ))}
-                          </div>
+                          {(["start", "end"] as const).map((position) => (
+                            <button
+                              key={position}
+                              type="button"
+                              className={`group absolute inset-x-0 flex h-1/2 items-center justify-end px-1 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${position === "start" ? "top-0 rounded-t-md" : "bottom-0 rounded-b-md"}`}
+                              aria-label={`${t(`sessions.detail.navigate_to_turn_${position}`, { id: turn.turnId })}${preview ? `: ${preview}` : ""}`}
+                              title={t(`sessions.detail.navigate_to_turn_${position}`, { id: index + 1 })}
+                              onClick={() => scrollToTurn(turnKey, position)}
+                            >
+                              <span className="rounded bg-surface/95 p-0.5 text-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus:opacity-100" aria-hidden="true">
+                                {position === "start" ? <ArrowUpToLine className="h-3.5 w-3.5" /> : <ArrowDownToLine className="h-3.5 w-3.5" />}
+                              </span>
+                            </button>
+                          ))}
                         </div>
                       );
                     })}

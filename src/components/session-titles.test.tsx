@@ -1112,11 +1112,11 @@ describe("session titles", () => {
     render(<SessionDetailModal session={session({})} onClose={vi.fn()} />);
 
     const navigation = await screen.findByRole("navigation", { name: "Quick navigation" });
-    expect(within(navigation).getByRole("button", { name: /Navigate to start of turn turn-1.*Investigate the sync issue/ }).parentElement?.parentElement).toHaveAttribute("aria-current", "location");
+    expect(within(navigation).getByRole("button", { name: /Navigate to start of turn turn-1.*Investigate the sync issue/ }).parentElement).toHaveAttribute("aria-current", "location");
     const secondTurn = within(navigation).getByRole("button", { name: /Navigate to start of turn turn-2.*Apply the verified fix/ });
     await userEvent.click(secondTurn);
     expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
-    expect(secondTurn.parentElement?.parentElement).toHaveAttribute("aria-current", "location");
+    expect(secondTurn.parentElement).toHaveAttribute("aria-current", "location");
     const turnToggle = screen.getByRole("button", { name: /Turn turn-2.*Collapse/ });
     await userEvent.click(turnToggle);
     expect(turnToggle).toHaveAttribute("aria-expanded", "false");
