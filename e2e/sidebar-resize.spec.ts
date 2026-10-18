@@ -17,6 +17,7 @@ describe("sidebar resizing", () => {
         return {
           sidebarTop: sidebar.getBoundingClientRect().top,
           contentTop: content.getBoundingClientRect().top,
+          contentBodyTop: document.querySelector("[data-app-content]")!.getBoundingClientRect().top,
           sidebarColor: getComputedStyle(sidebar).backgroundColor,
           contentColor: getComputedStyle(content).backgroundColor,
           dragHeight: dragRegion.getBoundingClientRect().height,
@@ -27,8 +28,10 @@ describe("sidebar resizing", () => {
       expect(layout.sidebarTop).toBe(0);
       expect(layout.contentTop).toBe(0);
       expect(layout.sidebarColor).not.toBe(layout.contentColor);
-      expect(layout.dragHeight).toBe(layout.isMac ? 36 : 0);
+      expect(layout.dragHeight).toBe(layout.isMac ? 12 : 0);
+      expect(layout.contentBodyTop).toBe(0);
       expect(layout.toggleTop).toBeGreaterThanOrEqual(layout.dragHeight);
+      if (layout.isMac) expect(layout.toggleTop).toBeLessThan(36);
     };
     await expectWindowBackgrounds();
 

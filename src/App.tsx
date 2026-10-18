@@ -168,15 +168,15 @@ export default function App() {
           showLogsTab={showLogsTab}
         />
       ) : null}
-      <div className="flex min-w-0 flex-1 flex-col bg-background">
-      <div data-tauri-drag-region aria-hidden="true" className="h-[var(--window-controls-height)] shrink-0 select-none" />
+      <div className="relative flex min-w-0 flex-1 flex-col bg-background">
+      <div data-tauri-drag-region aria-hidden="true" className={`shrink-0 select-none ${view === "settings" ? "h-[var(--window-controls-height)]" : "absolute inset-x-0 top-0 z-10 h-[var(--window-drag-height)]"}`} />
       <div className="relative min-h-0 flex-1 overflow-hidden" data-app-content>
       <div
         className="h-full overflow-y-auto"
         aria-hidden={selectedProjectForModal || selectedSession || isResetHistoryOpen ? "true" : undefined}
         inert={selectedProjectForModal || selectedSession || isResetHistoryOpen ? true : undefined}
       >
-      <div className="relative mx-auto flex min-h-full w-full max-w-layout flex-col px-6 pb-8 pt-3 sm:px-8 lg:px-10">
+      <div className="relative mx-auto flex min-h-full w-full max-w-layout flex-col px-6 pb-8 pt-4 sm:px-8 lg:px-10">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute right-10 top-3 h-40 w-40 rounded-full bg-[radial-gradient(circle,_rgba(10,10,10,0.08)_1px,_transparent_1px)] bg-[length:14px_14px] opacity-60"

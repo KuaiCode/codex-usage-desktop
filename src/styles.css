@@ -12,6 +12,7 @@
     --surface: 255 255 255;
     --sidebar: 245 244 249;
     --window-controls-height: 0px;
+    --window-drag-height: 0px;
     --primary: 99 102 241;
     --primary-foreground: 255 255 255;
     --secondary: 32 151 11;
@@ -43,6 +44,7 @@
 
   :root[data-platform="macos"] {
     --window-controls-height: 36px;
+    --window-drag-height: 12px;
   }
 
   @media (forced-colors: none) {
