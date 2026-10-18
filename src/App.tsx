@@ -2,7 +2,7 @@ import { CodexLimitsCard } from "@/components/codex-limits-card";
 import { CodexResetHistoryModal } from "@/components/codex-reset-history";
 import { DailyUsageTable } from "@/components/daily-usage-table";
 import { DashboardHeroCard } from "@/components/dashboard-hero-card";
-import { AppSidebar } from "@/components/app-sidebar";
+import { AppSidebar, clampSidebarWidth } from "@/components/app-sidebar";
 import { DashboardHeader, type DashboardView } from "@/components/dashboard-header";
 import { LoadingState } from "@/components/loading-state";
 import { LogPanel } from "@/components/log-panel";
@@ -27,8 +27,21 @@ import { useTranslation } from "react-i18next";
 export default function App() {
   const { t, i18n } = useTranslation();
   const [showNotes, setShowNotes] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(160);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const saved = Number(localStorage.getItem("sidebar_width"));
+      return Number.isFinite(saved) ? clampSidebarWidth(saved) : 160;
+    } catch {
+      return 160;
+    }
+  });
   const [settingsReturnView, setSettingsReturnView] = useState<DashboardView>("dashboard");
   const [selectedSessionDate, setSelectedSessionDate] = useState<string | null>(null);
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<{
@@ -107,6 +120,15 @@ export default function App() {
     trayCountdownUnits,
     handleTrayCountdownUnitChange,
   } = useUsageDashboard();
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("sidebar_collapsed", String(sidebarCollapsed));
+      localStorage.setItem("sidebar_width", String(sidebarWidth));
+    } catch {
+      // Keep the sidebar usable when local storage is unavailable.
+    }
+  }, [sidebarCollapsed, sidebarWidth]);
 
   useEffect(() => {
     const preventContextMenu = (event: MouseEvent) => {

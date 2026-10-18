@@ -25,7 +25,7 @@ const pages = [
 
 const MIN_WIDTH = 160;
 const MAX_WIDTH = 360;
-const clampWidth = (width: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
+export const clampSidebarWidth = (width: number) => Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width));
 
 export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, width, onWidthChange, showLogsTab }: AppSidebarProps) {
   const { t } = useTranslation();
@@ -38,7 +38,7 @@ export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, w
     if (!isResizing) return;
     const resize = (event: MouseEvent) => {
       if (!drag.current) return;
-      drag.current.width = clampWidth(drag.current.startWidth + event.clientX - drag.current.startX);
+      drag.current.width = clampSidebarWidth(drag.current.startWidth + event.clientX - drag.current.startX);
       setResizingWidth(drag.current.width);
     };
     const finishResize = () => {
@@ -102,7 +102,7 @@ export function AppSidebar({ view, onViewChange, collapsed, onToggleCollapsed, w
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
-            onWidthChange(clampWidth(width + (event.key === "ArrowRight" ? 8 : -8)));
+            onWidthChange(clampSidebarWidth(width + (event.key === "ArrowRight" ? 8 : -8)));
           }}
         >
           {resizingWidth !== null ? <div className="fixed inset-0 cursor-col-resize" /> : null}

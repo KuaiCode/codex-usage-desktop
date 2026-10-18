@@ -1,8 +1,30 @@
 import { $, browser, expect } from "@wdio/globals";
 
 describe("sidebar resizing", () => {
-  it("drags within width limits and preserves the width across collapse and settings", async () => {
-    await browser.execute(() => localStorage.setItem("language", "en"));
+  let previousPreferences: Record<string, string | null>;
+
+  before(async () => {
+    previousPreferences = await browser.execute(() => {
+      const keys = ["language", "sidebar_width", "sidebar_collapsed"];
+      const previous = Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)]));
+      localStorage.setItem("language", "en");
+      localStorage.removeItem("sidebar_width");
+      localStorage.removeItem("sidebar_collapsed");
+      return previous;
+    });
+  });
+
+  after(async () => {
+    await browser.execute((preferences) => {
+      for (const [key, value] of Object.entries(preferences)) {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      }
+    }, previousPreferences);
+    await browser.refresh();
+  });
+
+  it("persists resized width and collapse state across reloads and settings", async () => {
     await browser.refresh();
     const sidebar = $("[data-app-sidebar]");
     const handle = $('[role="separator"][aria-label="Resize sidebar"]');
@@ -82,11 +104,20 @@ describe("sidebar resizing", () => {
     await browser.action("pointer").move({ x: 500, y: 100 }).perform();
     await expectWidth(256);
 
+    await browser.refresh();
+    await expectWidth(256);
+
     await $('button[aria-label="Collapse sidebar"]').click();
     expect(await sidebar.getSize("width")).toBe(64);
     await expect(handle).not.toBeExisting();
     await expectWindowBackgrounds();
+    await browser.refresh();
+    await expect($('button[aria-label="Expand sidebar"]')).toHaveAttribute("aria-expanded", "false");
+    expect(await sidebar.getSize("width")).toBe(64);
+    await expect(handle).not.toBeExisting();
     await $('button[aria-label="Expand sidebar"]').click();
+    await browser.refresh();
+    await expect($('button[aria-label="Collapse sidebar"]')).toHaveAttribute("aria-expanded", "true");
     await expectWidth(256);
 
     await $('button[aria-label="Settings"]').click();
@@ -99,6 +130,9 @@ describe("sidebar resizing", () => {
     await handle.execute((element) => element.focus());
     await browser.keys("ArrowRight");
     await expectWidth(264);
+    await browser.refresh();
+    await expectWidth(264);
+    await handle.execute((element) => element.focus());
     await browser.keys("ArrowLeft");
     await expectWidth(256);
     await browser.saveScreenshot("/tmp/codex-usage-sidebar-resize.png");

@@ -250,6 +250,28 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Reset cache" })).not.toBeInTheDocument();
   });
 
+  it("restores the sidebar width and collapse state when the app remounts", async () => {
+    mockLoadedDashboard();
+    const user = userEvent.setup();
+    const app = render(<StrictMode><App /></StrictMode>);
+    const handle = screen.getByRole("separator", { name: "Resize sidebar" });
+    expect(handle).toHaveAttribute("aria-valuenow", "160");
+    fireEvent.keyDown(handle, { key: "ArrowRight" });
+    expect(handle).toHaveAttribute("aria-valuenow", "168");
+    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    app.unmount();
+
+    const restored = render(<StrictMode><App /></StrictMode>);
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toHaveAttribute("aria-expanded", "false");
+    await user.click(screen.getByRole("button", { name: "Expand sidebar" }));
+    expect(screen.getByRole("separator", { name: "Resize sidebar" })).toHaveAttribute("aria-valuenow", "168");
+    restored.unmount();
+
+    render(<StrictMode><App /></StrictMode>);
+    expect(screen.getByRole("button", { name: "Collapse sidebar" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("separator", { name: "Resize sidebar" })).toHaveAttribute("aria-valuenow", "168");
+  });
+
   it("checks for updates again after the app stays open for 24 hours", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-03T00:00:00.000Z"));
