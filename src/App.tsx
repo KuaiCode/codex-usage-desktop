@@ -28,7 +28,7 @@ export default function App() {
   const { t, i18n } = useTranslation();
   const [showNotes, setShowNotes] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth] = useState(208);
+  const [sidebarWidth, setSidebarWidth] = useState(160);
   const [settingsReturnView, setSettingsReturnView] = useState<DashboardView>("dashboard");
   const [selectedSessionDate, setSelectedSessionDate] = useState<string | null>(null);
   const [selectedProjectForModal, setSelectedProjectForModal] = useState<{
