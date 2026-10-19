@@ -109,7 +109,7 @@ export function CodexLimitsCard({ limits, error, quotaForecast, latestReset, rec
           <div className="flex flex-1 flex-col justify-center">
             <div className={cn(
               "grid gap-3 justify-center",
-              hasSubscription(limits) ? "grid-cols-1 md:grid-cols-3" : "grid-cols-1 md:grid-cols-2"
+              hasSubscription(limits) ? "grid-cols-1 md:grid-cols-[minmax(0,3fr)_minmax(0,3fr)_minmax(0,4fr)]" : "grid-cols-1 md:grid-cols-2"
             )}>
             {hasSubscription(limits) ? (
               <>

@@ -102,4 +102,27 @@ describe("dashboard layout", () => {
       await browser.saveScreenshot(`/tmp/codex-dashboard-layout-${width}.png`);
     }
   });
+
+  run("gives the reset area more width than either limit card", async () => {
+    for (const width of [1100, 1440, 1920]) {
+      await browser.setWindowSize(width, 960);
+      const resetArea = $('[data-testid="reset-area"]');
+      await resetArea.scrollIntoView({ block: "center" });
+      const layout = await browser.execute(() => {
+        const session = document.querySelector('[data-testid="limit-row-5-hour"]')!.getBoundingClientRect();
+        const weekly = document.querySelector('[data-testid="limit-row-weekly"]')!.getBoundingClientRect();
+        const reset = document.querySelector('[data-testid="reset-area"]')!.getBoundingClientRect();
+        return {
+          sessionWidth: session.width,
+          weeklyWidth: weekly.width,
+          resetWidth: reset.width,
+          tops: [session.top, weekly.top, reset.top],
+        };
+      });
+      expect(Math.abs(layout.sessionWidth - layout.weeklyWidth)).toBeLessThan(1);
+      expect(layout.resetWidth / layout.sessionWidth).toBeCloseTo(4 / 3, 1);
+      expect(Math.max(...layout.tops) - Math.min(...layout.tops)).toBeLessThan(1);
+      await browser.saveScreenshot(`/tmp/codex-limits-layout-${width}.png`);
+    }
+  });
 });
