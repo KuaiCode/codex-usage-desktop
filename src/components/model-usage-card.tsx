@@ -115,11 +115,14 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
 
   return (
     <div className="space-y-4" data-testid="model-analytics">
-      <div className="grid grid-cols-2 gap-3 content-lg:grid-cols-5">
+      <dl data-testid="model-summary" className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border content-sm:grid-cols-5">
         {summary.map(([label, value]) => (
-          <Card key={label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-bold tabular-nums text-foreground">{value}</p></CardContent></Card>
+          <div key={label} className="grid min-w-0 grid-rows-[1fr_auto] gap-1 bg-surface px-4 py-3 last:col-span-2 content-sm:last:col-span-1">
+            <dt className="text-xs leading-4 text-muted-foreground">{label}</dt>
+            <dd className="break-words text-lg font-bold tabular-nums leading-6 text-foreground">{value}</dd>
+          </div>
         ))}
-      </div>
+      </dl>
 
       <Card data-testid="model-quota-estimates">
         <CardHeader><CardTitle>{t("models.quota.title")}</CardTitle><CardDescription>{t("models.quota.subtitle")}</CardDescription></CardHeader>
