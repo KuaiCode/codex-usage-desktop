@@ -1273,7 +1273,7 @@ mod tests {
     #[test]
     fn session_turn_counts_survive_cache_migration_and_scoped_refresh() {
         let (_temporary, home, mut db) = scoped_fixture();
-        let path = home.join("sessions/turn-count.jsonl");
+        let path = home.join("sessions").join("turn-count.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let timestamp = "2026-09-01T09:00:00Z";
         let mut entries =
