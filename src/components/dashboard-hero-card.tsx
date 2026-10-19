@@ -70,8 +70,8 @@ export function DashboardHeroCard({
 
   return (
     <Card className="overflow-hidden rounded-lg border-border/80 bg-gradient-to-br from-surface via-surface to-primary/5">
-      <div className="p-4 content-lg:p-5">
-        <div className="flex flex-col gap-4 content-lg:flex-row content-lg:items-center content-lg:justify-between">
+      <div className="p-4 lg:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-1">
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">{t("hero.overview_label", { defaultValue: "Overview" })}</p>
             <div className="flex items-center gap-2">
@@ -89,7 +89,7 @@ export function DashboardHeroCard({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 content-lg:justify-end">
+          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
             <RangeSwitcher value={range} onChange={onRangeChange} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -112,7 +112,7 @@ export function DashboardHeroCard({
           </div>
         </div>
 
-        <div className="mt-3.5 grid gap-4 content-lg:grid-cols-[0.8fr_1.4fr] content-lg:gap-5">
+        <div className="mt-3.5 grid gap-4 lg:grid-cols-[0.8fr_1.4fr] lg:gap-5">
           <div className="flex flex-col justify-between gap-3.5">
             <div className="space-y-3.5">
               <div className="space-y-1">
@@ -235,7 +235,7 @@ export function DashboardHeroCard({
             </div>
           </div>
 
-          <div className="min-w-0 content-lg:h-full flex flex-col">
+          <div className="min-w-0 lg:h-full flex flex-col">
             <UsageTrendsCard
               daily={overview.daily}
               metrics={metrics}

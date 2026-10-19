@@ -144,7 +144,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
     <Card
       data-testid="usage-trends-card"
       className={cn(
-        "rounded-lg h-full flex flex-col [container-type:inline-size] [container-name:usage-trends]",
+        "rounded-lg h-full flex flex-col",
         className,
         isFullscreen && "w-full border-border bg-surface hover:translate-y-0 hover:shadow-none",
       )}
@@ -299,7 +299,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
           </ResponsiveContainer>
         </div>
 
-        {metrics.length > 0 ? <div className="trend-metrics grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border/70 bg-border/70">
+        {metrics.length > 0 ? <div className="trend-metrics grid grid-cols-2 gap-px sm:grid-cols-4 overflow-hidden rounded-lg border border-border/70 bg-border/70">
           {metrics.map((metric) => (
             <SummaryCell key={metric.label} metric={metric} cacheHitRate={cacheHitRate} />
           ))}
