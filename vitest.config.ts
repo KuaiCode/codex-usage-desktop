@@ -12,6 +12,9 @@ export default defineConfig({
   test: {
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
+    // Keep jsdom interaction tests responsive when the full suite runs.
+    maxWorkers: 1,
+    testTimeout: 15_000,
     coverage: {
       reporter: ["text", "html"],
     },

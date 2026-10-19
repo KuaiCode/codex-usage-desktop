@@ -1158,6 +1158,7 @@ describe("App", () => {
     expect(search).toHaveFocus();
     await user.type(search, "Project task");
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith("fetch_project_session_days", expect.objectContaining({ query: "Project task" })));
+    await waitFor(() => expect(projectDialog.querySelector('#date-group-2026-06-10')).toBeInTheDocument());
     const olderGroup = projectDialog.querySelector('#date-group-2026-06-10')!;
     const collapse = within(olderGroup as HTMLElement).getAllByRole("button")[0];
     expect(collapse).toHaveAttribute("aria-expanded", "false");

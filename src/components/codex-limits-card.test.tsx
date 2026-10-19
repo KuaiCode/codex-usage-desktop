@@ -210,7 +210,7 @@ describe("CodexLimitsCard component", () => {
 
     expect(screen.getByText("Monthly usage limit")).toBeInTheDocument();
     expect(screen.getByTestId("reset-area")).toBeInTheDocument();
-    expect(screen.getByTestId("reset-area").parentElement).toHaveClass("grid-cols-1", "content-lg:grid-cols-2");
+    expect(screen.getByTestId("reset-area").parentElement).toHaveClass("grid-cols-1", "md:grid-cols-2");
     expect(screen.queryByText("5-Hour Limit")).not.toBeInTheDocument();
     expect(screen.queryByText("Weekly Limit")).not.toBeInTheDocument();
   });
@@ -272,7 +272,7 @@ describe("CodexLimitsCard component", () => {
     expect(screen.getByText("Weekly Limit")).toBeInTheDocument();
     expect(resetArea).toContainElement(forecastButton);
     expect(resetArea).toContainElement(creditCount);
-    expect(resetArea.parentElement).toHaveClass("grid-cols-1", "content-lg:grid-cols-3");
+    expect(resetArea.parentElement).toHaveClass("grid-cols-1", "md:grid-cols-[minmax(0,3fr)_minmax(0,3fr)_minmax(0,4fr)]");
     expect(weeklyLimit).not.toContainElement(creditCount);
     expect(screen.queryByText("Codex Limits")).not.toBeInTheDocument();
     expect(screen.queryByText("Live limits from your Codex account")).not.toBeInTheDocument();

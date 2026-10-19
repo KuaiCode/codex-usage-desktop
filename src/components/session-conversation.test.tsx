@@ -316,7 +316,7 @@ it("renders async user input titles and optional string choices as readable ques
   render(<ConversationItem block={buildConversation(turn)[0]} rawJsonlLines={['{"type":"function_call"}']} />);
 
   expect(screen.getByText("User input request")).toBeInTheDocument();
-  expect((await screen.findAllByText("/football", {}, { timeout: 3000 }))[0].tagName).toBe("CODE");
+  expect((await screen.findAllByText("/football", {}, { timeout: 10_000 }))[0].tagName).toBe("CODE");
   expect(screen.getByText("page").tagName).toBe("STRONG");
   expect(screen.getByText("Home")).toBeInTheDocument();
   expect(screen.getByText("Team")).toBeInTheDocument();

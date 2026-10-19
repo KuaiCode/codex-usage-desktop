@@ -490,7 +490,7 @@ function parallelToolScript(value: string) {
     const script = scanToolScript(array);
     if (script.dynamic || script.calls.length === 0) return null;
     let skeleton = script.code;
-    for (const call of script.calls.toReversed()) {
+    for (const call of script.calls.slice().reverse()) {
       const end = closingDelimiter(script.code, call.argumentStart - 1, "(", ")");
       if (end < 0) return null;
       skeleton = `${skeleton.slice(0, call.index)}CALL${skeleton.slice(end + 1)}`;
@@ -505,10 +505,10 @@ function parallelToolScript(value: string) {
   return `${commands}\n${tailScript.calls.length ? tail : ""}`;
 }
 
-function parseNestedActivities(value: string | null, output: string | null) {
-  if (!value) return null;
-  const parallel = parallelToolScript(value);
-  value = parallel ?? value;
+function parseNestedActivities(rawValue: string | null, output: string | null) {
+  if (!rawValue) return null;
+  const parallel = parallelToolScript(rawValue);
+  const value = parallel ?? rawValue;
   const { calls, code, dynamic } = scanToolScript(value);
   if (dynamic || calls.some((call) => !["exec_command", "write_stdin", "apply_patch", "view_image", "web__run"].includes(call.name))
     || calls.filter((call) => call.name === "view_image").length > 1
@@ -518,7 +518,7 @@ function parseNestedActivities(value: string | null, output: string | null) {
   const hasSearch = calls.some((call) => call.name === "web__run");
   const body = hasSearch ? content?.texts.map(cleanExecOutput).filter(Boolean) ?? [] : [];
   let skeleton = code;
-  for (const call of hasSearch ? calls.toReversed() : []) {
+  for (const call of hasSearch ? calls.slice().reverse() : []) {
     const end = closingDelimiter(code, call.argumentStart - 1, "(", ")");
     if (end < 0) return null;
     skeleton = `${skeleton.slice(0, call.index)}CALL${skeleton.slice(end + 1)}`;
@@ -769,7 +769,7 @@ function buildToolActivity(item: Extract<ReplayItem, { kind: "toolCall" }>) {
     // Reserve explicit working directories before matching calls that use the default cwd.
     const commands = projected.map((activity, index) => ({ activity, index }))
       .filter((entry): entry is { activity: Extract<NestedActivity, { kind: "command" }>; index: number } => entry.activity.kind === "command")
-      .toSorted((a, b) => Number(Boolean(b.activity.workdir)) - Number(Boolean(a.activity.workdir)));
+      .sort((a, b) => Number(Boolean(b.activity.workdir)) - Number(Boolean(a.activity.workdir)));
     for (const { activity, index: activityIndex } of commands) {
       const index = remaining.findIndex((candidate) => candidate.kind === "command" && candidate.command === activity.command
         && (!activity.workdir || candidate.workdir === activity.workdir));
