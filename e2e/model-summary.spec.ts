@@ -11,7 +11,7 @@ describe("model summary layout", () => {
     const sessions = join(process.env.CODEX_HOME!, "sessions");
     mkdirSync(sessions, { recursive: true });
     const timestamp = new Date().toISOString();
-    for (const model of ["gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.3-codex", "gpt-5.4"]) {
+    for (const model of ["gpt-5", "gpt-5.1", "gpt-5.2", "gpt-5.3-codex", "custom-model-with-a-long-name-and-unavailable-pricing"]) {
       const entries = [
         { type: "session_meta", payload: { cwd: "/model-summary" } },
         { type: "turn_context", payload: { model } },
@@ -73,6 +73,33 @@ describe("model summary layout", () => {
         await expect(summary.$("dd")).toHaveText("5");
         await expect(summary).toHaveText(expect.stringContaining("968.5M"));
         await browser.saveScreenshot(`/tmp/codex-model-summary-${language}-${width}.png`);
+      }
+    }
+  });
+
+  run("fits model comparison data without horizontal scrolling", async () => {
+    for (const language of ["en", "zh"]) {
+      await browser.execute((language) => localStorage.setItem("language", language), language);
+      await browser.refresh();
+      await $('[data-testid="models-nav-tab"]').click();
+      const row = $("tr[data-model-row]");
+      await row.waitForExist();
+      for (const width of [1100, 1440, 1920]) {
+        await browser.setWindowSize(width, 960);
+        await row.scrollIntoView({ block: "center" });
+        const layout = await browser.execute(() => {
+          const table = document.querySelector("tr[data-model-row]")!.closest("table")!;
+          const wrapper = table.parentElement!;
+          return {
+            rows: table.querySelectorAll("tbody tr").length,
+            prices: table.querySelectorAll("[data-price-tone]").length,
+            wrapperOverflow: wrapper.scrollWidth > wrapper.clientWidth,
+            cellOverflow: Array.from(table.querySelectorAll("th, td")).some((cell) => cell.scrollWidth > cell.clientWidth),
+            pageOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          };
+        });
+        expect(layout).toEqual({ rows: 5, prices: 20, wrapperOverflow: false, cellOverflow: false, pageOverflow: false });
+        await browser.saveScreenshot(`/tmp/codex-model-comparison-${language}-${width}.png`);
       }
     }
   });
