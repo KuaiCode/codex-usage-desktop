@@ -134,6 +134,8 @@ describe("session turn navigation", () => {
       expect(await firstStart.$("span").execute((element) => getComputedStyle(element).opacity)).toBe("0");
       expect(await firstEnd.$("span").execute((element) => getComputedStyle(element).opacity)).toBe("0");
 
+      await browser.tauri.execute(({ core }) => core.invoke("plugin:window|set_focus", { label: "main" }));
+      await browser.waitUntil(() => browser.execute(() => document.hasFocus()));
       for (const position of ["start", "end"] as const) {
         const button = position === "start" ? firstStart : firstEnd;
         const other = position === "start" ? firstEnd : firstStart;

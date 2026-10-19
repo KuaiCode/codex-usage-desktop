@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
@@ -61,6 +62,10 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [plugin(({ addVariant }) => {
+    for (const [name, width] of Object.entries({ sm: 640, md: 768, lg: 1024 })) {
+      addVariant(`content-${name}`, `@container app-content (min-width: ${width}px)`);
+    }
+  })],
 } satisfies Config;
 

@@ -144,7 +144,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
     <Card
       data-testid="usage-trends-card"
       className={cn(
-        "rounded-lg h-full flex flex-col",
+        "rounded-lg h-full flex flex-col [container-type:inline-size] [container-name:usage-trends]",
         className,
         isFullscreen && "w-full border-border bg-surface hover:translate-y-0 hover:shadow-none",
       )}
@@ -299,7 +299,7 @@ export function UsageTrendsCard({ daily, metrics, cacheHitRate, chartHeight = 30
           </ResponsiveContainer>
         </div>
 
-        {metrics.length > 0 ? <div className="grid overflow-hidden rounded-lg border border-border/70 bg-surface/70 sm:grid-cols-4">
+        {metrics.length > 0 ? <div className="trend-metrics grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border/70 bg-border/70">
           {metrics.map((metric) => (
             <SummaryCell key={metric.label} metric={metric} cacheHitRate={cacheHitRate} />
           ))}
@@ -333,7 +333,7 @@ function SummaryCell({
 
   return (
     <div className={cn(
-      "group relative border-b border-border/70 p-2 sm:p-2.5 transition-all duration-300 last:border-b-0 hover:bg-muted/10 sm:border-b-0 sm:border-r sm:last:border-r-0",
+      "group relative min-w-0 bg-surface p-2 sm:p-2.5 transition-all duration-300 hover:bg-muted",
       style.accent,
     )}>
       <div className="flex min-h-[56px] items-center justify-between gap-3">
@@ -345,7 +345,7 @@ function SummaryCell({
             </p>
           </div>
           <div className="pt-0.5">
-            <p className="text-base sm:text-lg font-extrabold tracking-tight text-foreground leading-none whitespace-nowrap" title={metric.value}>
+            <p className="truncate text-base sm:text-lg font-extrabold tracking-tight text-foreground leading-none" title={metric.value}>
               {metric.value}
             </p>
             <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">{metric.detail}</p>

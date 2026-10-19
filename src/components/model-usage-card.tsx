@@ -115,7 +115,7 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
 
   return (
     <div className="space-y-4" data-testid="model-analytics">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 content-lg:grid-cols-5">
         {summary.map(([label, value]) => (
           <Card key={label}><CardContent className="p-4"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-bold tabular-nums text-foreground">{value}</p></CardContent></Card>
         ))}
@@ -132,7 +132,7 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
           </div>
           <div className="divide-y divide-border/70">
             {sortedModels.map((model) => <details key={model.model} data-quota-model={model.model} className="group">
-              <summary className="grid cursor-pointer list-none gap-3 py-4 focus-visible:rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring sm:grid-cols-[minmax(10rem,15rem)_minmax(0,1fr)] sm:items-center [&::-webkit-details-marker]:hidden">
+              <summary className="grid cursor-pointer list-none gap-3 py-4 focus-visible:rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring content-md:grid-cols-[minmax(10rem,15rem)_minmax(0,1fr)] content-md:items-center [&::-webkit-details-marker]:hidden">
                 <span className="flex min-w-0 items-center gap-2 font-medium"><ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /><span className="truncate" title={model.model}>{model.model}</span></span>
                 <div className="grid gap-3">
                   <div className="grid gap-1">
@@ -147,7 +147,7 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
                   </div>
                 </div>
               </summary>
-              <div data-quota-details className="grid gap-4 rounded-md bg-muted/40 p-4 text-sm sm:ml-[15rem] sm:grid-cols-2">
+              <div data-quota-details className="grid gap-4 rounded-md bg-muted/40 p-4 text-sm content-md:ml-[15rem] content-md:grid-cols-2">
                 <div><h4 className="mb-2 font-medium">{t("models.quota.five_hour")}</h4><QuotaEstimate value={model.fiveHourQuota} /></div>
                 <div><h4 className="mb-2 font-medium">{t("models.quota.weekly")}</h4><QuotaEstimate value={model.weeklyQuota} /></div>
               </div>
@@ -156,7 +156,7 @@ export function ModelUsageCard({ models }: ModelUsageCardProps) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 content-lg:grid-cols-2">
         <Card>
           <CardHeader><CardTitle>{t("models.composition.title")}</CardTitle><CardDescription>{t("models.composition.subtitle")}</CardDescription></CardHeader>
           <CardContent className="space-y-5">

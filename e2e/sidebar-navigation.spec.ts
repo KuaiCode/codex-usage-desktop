@@ -20,6 +20,7 @@ describe("sidebar navigation", () => {
     writeFileSync(join(sessions, "sidebar.jsonl"), entries.map((entry) => JSON.stringify({ timestamp, ...entry })).join("\n") + "\n");
     await browser.execute(async () => {
       localStorage.setItem("language", "en");
+      localStorage.setItem("sidebar_collapsed", "false");
       const runtime = (window as unknown as { __TAURI_INTERNALS__: { invoke: (command: string) => Promise<unknown> } }).__TAURI_INTERNALS__;
       await runtime.invoke("scan_usage");
     });
@@ -28,8 +29,9 @@ describe("sidebar navigation", () => {
     await sidebar.waitForDisplayed();
     const expandedWidth = await sidebar.getSize("width");
     await $('[data-testid="projects-nav-tab"]').click();
-    await $('[data-testid="project-comparison"] tr[role="button"]').waitForDisplayed({ timeout: 90_000 });
-    await $('[data-testid="project-comparison"] tr[role="button"]').click();
+    const projectRow = $('//*[@data-testid="project-comparison"]//tr[@role="button"][contains(., "sidebar-navigation")]');
+    await projectRow.waitForDisplayed({ timeout: 90_000 });
+    await projectRow.click();
     const project = $('[aria-labelledby="modal-project-title"]');
     await project.waitForDisplayed();
 
@@ -82,7 +84,7 @@ describe("sidebar navigation", () => {
 
     // Switching pages also closes a project dialog without first opening a session.
     await $('[data-testid="projects-nav-tab"]').click();
-    await $('[data-testid="project-comparison"] tr[role="button"]').click();
+    await projectRow.click();
     const reopenedProject = $('[aria-labelledby="modal-project-title"]');
     await reopenedProject.waitForDisplayed();
     await $('[data-testid="dashboard-nav-tab"]').click();

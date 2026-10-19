@@ -294,6 +294,12 @@
     contain-intrinsic-size: auto 112px;
   }
 
+  @container usage-trends (min-width: 640px) {
+    .trend-metrics {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
   .session-usage-card {
     display: grid;
     grid-template-columns: minmax(280px, 1fr) minmax(210px, 0.48fr) 156px;
@@ -361,7 +367,7 @@
     border-inline-start-width: 1px;
   }
 
-  @media (min-width: 901px) {
+  @container session-card (min-width: 901px) {
     .session-usage-card[data-language="en"] {
       grid-template-columns: minmax(280px, 1fr) minmax(210px, 0.48fr) 212px;
     }
@@ -378,7 +384,7 @@
     margin-left: 16px;
   }
 
-  @media (max-width: 900px) {
+  @container session-card (max-width: 900px) {
     .session-usage-card {
       grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.8fr);
       min-height: 104px;
@@ -399,7 +405,7 @@
     }
   }
 
-  @media (max-width: 620px) {
+  @container session-card (max-width: 620px) {
     .session-usage-card {
       grid-template-columns: minmax(0, 1fr);
     }

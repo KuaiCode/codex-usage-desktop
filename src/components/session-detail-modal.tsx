@@ -1014,7 +1014,7 @@ function ToolCallItem({ item, activity, tokenUsage, rawJsonl }: { activity: Tool
               : <ToolPreview title={argumentsTitle} text={argumentsText} lines={1} />
         ) : null}
         {argumentEntries.length > 0 ? (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 content-lg:grid-cols-3">
             {argumentEntries.map(([key, value]) => (
               <div key={key} className="min-w-0 rounded-md border border-cyan-300/50 bg-cyan-50/60 px-3 py-2 dark:border-cyan-800/50 dark:bg-cyan-950/25">
                 <div className="text-[10px] font-semibold uppercase tracking-[0.1em] text-cyan-700 dark:text-cyan-300">

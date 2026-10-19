@@ -10,7 +10,7 @@
         {
           "identifier": "e2e",
           "windows": ["main"],
-          "permissions": ["wdio:default", "wdio-webdriver:default"]
+          "permissions": ["wdio:default", "wdio-webdriver:default", "core:window:allow-set-focus"]
         }
       ]
     }

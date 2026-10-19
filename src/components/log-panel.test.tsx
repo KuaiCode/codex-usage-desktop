@@ -38,10 +38,12 @@ describe("LogPanel", () => {
       loggerCallbacks[0]({ level: 3, message: "Retrying scan" });
     });
 
+    expect(screen.getByText("Indexer started").parentElement!.firstElementChild).toHaveTextContent(/^\d{2}:\d{2}:\d{2}[.,]\d{3}$/);
+
     await userEvent.click(screen.getByRole("button", { name: "Copy" }));
 
     expect(writeText).toHaveBeenCalledOnce();
-    expect(writeText.mock.calls[0][0]).toMatch(/\] INFO Indexer started\n\[.*\] WARN Retrying scan$/);
+    expect(writeText.mock.calls[0][0]).toMatch(/^\[\d{2}:\d{2}:\d{2}[.,]\d{3}\] INFO Indexer started\n\[.*\] WARN Retrying scan$/);
     expect(screen.getByRole("button", { name: "Copied" })).toBeInTheDocument();
   });
 

@@ -721,7 +721,7 @@ export function SessionUsageTable({
                     return (
                       <div
                         key={session.path}
-                        className="relative"
+                        className="relative [container-type:inline-size] [container-name:session-card]"
                         data-agent-depth={session.agentDepth ?? 0}
                         style={{ paddingInlineStart: hierarchyDepth ? `${hierarchyDepth * 20}px` : undefined }}
                       >

@@ -63,7 +63,7 @@ export function LogPanel({ isActive }: LogPanelProps) {
 
   async function copyLogs() {
     const text = logs.map((log) => (
-      `[${log.time.toLocaleTimeString(undefined, { hour12: false, fractionalSecondDigits: 3 })}] ${getLevelName(log.level)} ${log.message}`
+      `[${log.time.toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 })}] ${getLevelName(log.level)} ${log.message}`
     )).join("\n");
     await navigator.clipboard.writeText(text);
     setCopied(true);
@@ -118,7 +118,7 @@ export function LogPanel({ isActive }: LogPanelProps) {
           logs.map((log) => (
             <div key={log.id} className="mb-1 flex gap-3 hover:bg-muted/30">
               <span className="shrink-0 text-muted-foreground">
-                {log.time.toLocaleTimeString(undefined, { hour12: false, fractionalSecondDigits: 3 })}
+                {log.time.toLocaleTimeString(undefined, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 })}
               </span>
               <span className={`shrink-0 w-12 font-medium ${getLevelColor(log.level)}`}>
                 {getLevelName(log.level)}
