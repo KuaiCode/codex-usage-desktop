@@ -491,6 +491,8 @@
     "filtering_by_project": "Filtering by Project",
     "count_sessions_one": "1 session",
     "count_sessions_other": "{{count}} sessions",
+    "count_turns_one": "{{count}} turn",
+    "count_turns_other": "{{count}} turns",
     "day_total_tokens": "Day Total Tokens",
     "day_cost": "Day Cost",
     "projects_models": "Projects & Models",

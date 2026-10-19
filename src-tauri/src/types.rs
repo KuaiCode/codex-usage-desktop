@@ -430,6 +430,7 @@ pub struct SessionDetailRow {
     pub projects: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub project_references: Vec<ProjectReference>,
+    pub turn_count: usize,
     pub daily_usage: Vec<SessionDailyUsageRow>,
     pub quota_usage: Option<SessionQuotaUsage>,
 }

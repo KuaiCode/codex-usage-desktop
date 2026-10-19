@@ -22,7 +22,7 @@ const analytics = (range: string, startDate = "2026-07-01"): ProjectAnalyticsRes
   summary: { ...project, inputTokens: 100, cachedInputTokens: 20, outputTokens: 40 }, models: [], daily: [],
 });
 const session = (date: string, index = 0): SessionDetailRow => ({
-  path: `/tmp/task-${index}.jsonl`, sessionId: `task-${index}`, threadName: `Task ${index}`,
+  turnCount: 0, path: `/tmp/task-${index}.jsonl`, sessionId: `task-${index}`, threadName: `Task ${index}`,
   modifiedAtMs: Date.parse(`${date}T08:00:00Z`) - index, sizeBytes: 100,
   inputTokens: 100, cachedInputTokens: 20, outputTokens: 40, reasoningOutputTokens: 0, totalTokens: 140, costUSD: 0.001,
   models: ["gpt-5"], projects: [project.project],

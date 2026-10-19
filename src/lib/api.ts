@@ -329,6 +329,7 @@ export type SessionQuotaUsage = {
 };
 
 export type SessionDetailRow = {
+  turnCount: number;
   path: string;
   sessionId: string;
   threadName: string | null;

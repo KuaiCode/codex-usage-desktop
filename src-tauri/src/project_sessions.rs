@@ -55,7 +55,7 @@ fn revision(codex_home: &Path, timezone: &str) -> String {
             .map(|value| value.to_string())
             .hash(&mut hash);
     }
-    format!("1:{:x}", hash.finish())
+    format!("2:{:x}", hash.finish())
 }
 
 // Backfill existing databases once; later scans and queries only rebuild changed entries.
@@ -426,6 +426,7 @@ mod tests {
                     size_bytes: 100,
                     rows,
                     prompt_title: Some(name.to_string()),
+                    turn_count: 0,
                     quota_usage: None,
                 }],
                 "v1",

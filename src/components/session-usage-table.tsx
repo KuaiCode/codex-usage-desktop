@@ -841,6 +841,8 @@ export function SessionUsageTable({
                           </div>
                           <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground/80">
                             <span className="font-semibold tabular-nums text-foreground" title={fullTime}>{formattedTime}</span>
+                            <span aria-hidden="true">·</span>
+                            <span className="shrink-0 tabular-nums" data-testid="session-turn-count">{t("sessions.count_turns", { count: session.turnCount })}</span>
                             {shownModels.length > 0 ? <span aria-hidden="true">·</span> : null}
                             {shownModels.length > 0 ? (
                               <span className="flex min-w-0 items-center gap-1 overflow-hidden" title={session.models.join(", ")}>

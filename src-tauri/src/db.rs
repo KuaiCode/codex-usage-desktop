@@ -7,7 +7,7 @@ use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 
-const QUOTA_PARSER_VERSION: i64 = 3;
+const QUOTA_PARSER_VERSION: i64 = 4;
 
 pub fn open_database(database_path: &Path) -> Result<Connection, String> {
     let db = Connection::open(database_path).map_err(|error| error.to_string())?;
@@ -43,6 +43,7 @@ pub fn open_database(database_path: &Path) -> Result<Connection, String> {
           size_bytes INTEGER NOT NULL,
           rows_json TEXT NOT NULL,
           prompt_title TEXT,
+          turn_count INTEGER NOT NULL DEFAULT 0,
           quota_usage_json TEXT,
           quota_parser_version INTEGER NOT NULL DEFAULT 0,
           updated_at TEXT NOT NULL
@@ -74,6 +75,12 @@ pub fn open_database(database_path: &Path) -> Result<Connection, String> {
         "quota_parser_version",
         "ALTER TABLE session_file_rollups ADD COLUMN quota_parser_version INTEGER NOT NULL DEFAULT 0",
     )?;
+    ensure_column(
+        &db,
+        "session_file_rollups",
+        "turn_count",
+        "ALTER TABLE session_file_rollups ADD COLUMN turn_count INTEGER NOT NULL DEFAULT 0",
+    )?;
     crate::project_sessions::create_tables(&db)?;
     Ok(db)
 }
@@ -85,6 +92,7 @@ pub struct SessionFileRollup {
     pub size_bytes: i64,
     pub rows: Vec<DailyUsageRow>,
     pub prompt_title: Option<String>,
+    pub turn_count: usize,
     pub quota_usage: Option<SessionQuotaRollup>,
 }
 
@@ -343,7 +351,7 @@ pub fn query_session_file_rollup(
 ) -> Result<Option<SessionFileRollup>, String> {
     let result = db.query_row(
         r#"
-        SELECT rows_json, prompt_title, quota_usage_json
+        SELECT rows_json, prompt_title, quota_usage_json, turn_count
         FROM session_file_rollups
         WHERE path = ? AND modified_at_ms = ? AND size_bytes = ? AND quota_parser_version = ?
         "#,
@@ -353,12 +361,13 @@ pub fn query_session_file_rollup(
                 row.get::<_, String>(0)?,
                 row.get::<_, Option<String>>(1)?,
                 row.get::<_, Option<String>>(2)?,
+                row.get::<_, usize>(3)?,
             ))
         },
     );
 
     match result {
-        Ok((rows_json, prompt_title, quota_usage_json)) => {
+        Ok((rows_json, prompt_title, quota_usage_json, turn_count)) => {
             let rows = serde_json::from_str(&rows_json).map_err(|error| error.to_string())?;
             let quota_usage = quota_usage_json
                 .map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
@@ -369,6 +378,7 @@ pub fn query_session_file_rollup(
                 size_bytes,
                 rows,
                 prompt_title,
+                turn_count,
                 quota_usage,
             }))
         }
@@ -378,7 +388,7 @@ pub fn query_session_file_rollup(
 }
 
 pub fn query_all_session_file_rollups(db: &Connection) -> Result<Vec<SessionFileRollup>, String> {
-    let mut statement = db.prepare("SELECT path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_usage_json FROM session_file_rollups")
+    let mut statement = db.prepare("SELECT path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_usage_json, turn_count FROM session_file_rollups")
         .map_err(|error| error.to_string())?;
     let records = statement
         .query_map([], |row| {
@@ -389,18 +399,20 @@ pub fn query_all_session_file_rollups(db: &Connection) -> Result<Vec<SessionFile
                 row.get::<_, String>(3)?,
                 row.get::<_, Option<String>>(4)?,
                 row.get::<_, Option<String>>(5)?,
+                row.get::<_, usize>(6)?,
             ))
         })
         .map_err(|error| error.to_string())?;
     records
         .map(|record| {
-            let (path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_json) =
+            let (path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_json, turn_count) =
                 record.map_err(|error| error.to_string())?;
             Ok(SessionFileRollup {
                 path,
                 modified_at_ms,
                 size_bytes,
                 prompt_title,
+                turn_count,
                 rows: serde_json::from_str(&rows_json).map_err(|error| error.to_string())?,
                 quota_usage: quota_json
                     .map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
@@ -501,15 +513,17 @@ pub fn upsert_session_file_rollups(
                   rows_json,
                   prompt_title,
                   quota_usage_json,
+                  turn_count,
                   quota_parser_version,
                   updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(path) DO UPDATE SET
                   modified_at_ms = excluded.modified_at_ms,
                   size_bytes = excluded.size_bytes,
                   rows_json = excluded.rows_json,
                   prompt_title = excluded.prompt_title,
                   quota_usage_json = excluded.quota_usage_json,
+                  turn_count = excluded.turn_count,
                   quota_parser_version = excluded.quota_parser_version,
                   updated_at = excluded.updated_at
                 "#,
@@ -533,6 +547,7 @@ pub fn upsert_session_file_rollups(
                     rows_json,
                     rollup.prompt_title,
                     quota_usage_json,
+                    rollup.turn_count,
                     QUOTA_PARSER_VERSION,
                     updated_at
                 ])
@@ -756,7 +771,8 @@ pub fn query_session_details(db: &Connection) -> Result<Vec<SessionDetailRow>, S
               size_bytes,
               rows_json,
               prompt_title,
-              quota_usage_json
+              quota_usage_json,
+              turn_count
             FROM session_file_rollups
             ORDER BY modified_at_ms DESC
             "#,
@@ -773,7 +789,7 @@ pub fn query_session_details(db: &Connection) -> Result<Vec<SessionDetailRow>, S
 
 pub fn query_session_detail(db: &Connection, path: &str) -> Result<SessionDetailRow, String> {
     db.query_row(
-        "SELECT path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_usage_json FROM session_file_rollups WHERE path = ?",
+        "SELECT path, modified_at_ms, size_bytes, rows_json, prompt_title, quota_usage_json, turn_count FROM session_file_rollups WHERE path = ?",
         [path],
         session_detail_from_row,
     ).map_err(|error| error.to_string())
@@ -849,6 +865,7 @@ fn session_detail_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionD
         agent_role: None,
         modified_at_ms,
         size_bytes,
+        turn_count: row.get(6)?,
         input_tokens,
         cached_input_tokens,
         output_tokens,
@@ -1110,6 +1127,7 @@ mod tests {
             &mut db,
             &[
                 SessionFileRollup {
+                    turn_count: 0,
                     path: "/tmp/titled.jsonl".to_string(),
                     modified_at_ms: 2,
                     size_bytes: 2,
@@ -1118,6 +1136,7 @@ mod tests {
                     quota_usage: None,
                 },
                 SessionFileRollup {
+                    turn_count: 0,
                     path: "/tmp/untitled.jsonl".to_string(),
                     modified_at_ms: 1,
                     size_bytes: 1,
@@ -1175,6 +1194,7 @@ mod tests {
         upsert_session_file_rollups(
             &mut db,
             &[SessionFileRollup {
+                turn_count: 0,
                 path: "/tmp/resumed.jsonl".to_string(),
                 modified_at_ms: 2,
                 size_bytes: 200,

@@ -22,6 +22,7 @@ function session(overrides: Partial<SessionDetailRow>): SessionDetailRow {
     threadName: null,
     modifiedAtMs: new Date("2026-07-15T08:00:00Z").getTime(),
     sizeBytes: 1024,
+    turnCount: 0,
     inputTokens: 100,
     cachedInputTokens: 20,
     outputTokens: 40,
@@ -99,6 +100,15 @@ function replayAgent(overrides: Partial<SessionReplayDetail["agents"][number]>):
 }
 
 describe("session daily usage", () => {
+  it.each([0, 1, 3])("shows %i total turns in both list layouts", (turnCount) => {
+    const row = session({ turnCount });
+    const { rerender } = render(<SessionUsageTable sessions={[row]} />);
+    const label = `${turnCount} ${turnCount === 1 ? "turn" : "turns"}`;
+    expect(screen.getByTestId("session-turn-count")).toHaveTextContent(label);
+    rerender(<SessionUsageTable sessions={[row]} selectedProject="/repo/app" embedded projectDay />);
+    expect(screen.getByTestId("session-turn-count")).toHaveTextContent(label);
+  });
+
   it("keeps backend quota baselines without reprocessing project-day snapshots", () => {
     const parse = vi.spyOn(Date, "parse");
     onTestFinished(() => parse.mockRestore());

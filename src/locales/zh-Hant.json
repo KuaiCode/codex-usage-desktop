@@ -491,6 +491,7 @@
     "filtering_by_project": "目前按專案篩選",
     "count_sessions_one": "1 個工作階段",
     "count_sessions_other": "{{count}} 個工作階段",
+    "count_turns": "{{count}} 回合",
     "day_total_tokens": "單日 Tokens 總數",
     "day_cost": "單日花費",
     "projects_models": "專案與模型",

@@ -56,6 +56,82 @@ struct ReplayParseState {
     command_executions: BTreeMap<String, (String, SessionReplayToolCall, Vec<usize>)>,
 }
 
+// Count replay groups while scanning, without retaining messages or tool output.
+#[derive(Default)]
+pub(crate) struct SessionTurnCounter {
+    current: Option<String>,
+    ids: std::collections::BTreeSet<String>,
+}
+
+impl SessionTurnCounter {
+    pub(crate) fn ingest(&mut self, entry: &Value) {
+        if let Some(id) = find_turn_id(entry) {
+            self.current = Some(id);
+        }
+        let entry_type = entry["type"].as_str().unwrap_or("");
+        if entry_type == "session_meta" {
+            return;
+        }
+        let event = if matches!(entry_type, "event_msg" | "response_item") {
+            &entry["payload"]
+        } else {
+            entry
+        };
+        if let Some(id) = find_turn_id(event) {
+            self.current = Some(id);
+        }
+        let event_type = event["type"].as_str().unwrap_or(entry_type);
+        // Token-only logs are recorded by the scanner after validating their usage.
+        if event_type == "token_count" {
+            return;
+        }
+        let has_message = (is_user_message(event_type, event)
+            || is_assistant_message(event_type, event)
+            || is_system_message(event_type, event)
+            || is_reasoning_message(event_type))
+            && extract_message_text(event).is_some();
+        if entry_type == "turn_context"
+            || matches!(
+                event_type,
+                "task_started"
+                    | "task_complete"
+                    | "task_completed"
+                    | "context_compacted"
+                    | "compacted"
+            )
+            || has_message
+            || is_tool_call(event_type)
+            || is_tool_output(event_type)
+            || is_patch_event(event_type)
+            || is_error_event(event_type, event)
+            || (event_type == "item_completed"
+                && matches!(
+                    event.pointer("/item/type").and_then(Value::as_str),
+                    Some("CommandExecution")
+                )
+                && string_field(&event["item"], "id").is_some())
+            || (event_type == "item_completed"
+                && event.pointer("/item/type").and_then(Value::as_str) == Some("Extension")
+                && event.pointer("/item/kind").and_then(Value::as_str) == Some("clock.sleep"))
+        {
+            self.record_current();
+        }
+    }
+
+    pub(crate) fn record_current(&mut self) {
+        self.ids.insert(
+            self.current
+                .as_deref()
+                .unwrap_or(UNGROUPED_TURN_ID)
+                .to_string(),
+        );
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.ids.len()
+    }
+}
+
 pub fn fetch_session_detail(db: &Connection, path: &str) -> Result<SessionReplayDetail, String> {
     let record = query_session_rollup_record(db, path)?
         .ok_or_else(|| "Session file is not indexed".to_string())?;
@@ -3518,6 +3594,7 @@ mod tests {
                 size_bytes: raw.len() as i64,
                 rows: vec![],
                 prompt_title: Some("Replay this session".to_string()),
+                turn_count: 0,
                 quota_usage: None,
             }],
             "2026-06-01T00:00:00.000Z",
@@ -3591,6 +3668,7 @@ mod tests {
                 size_bytes: fs::metadata(path).unwrap().len() as i64,
                 rows: vec![usage(cost_usd)],
                 prompt_title: Some(prompt_title.to_string()),
+                turn_count: 0,
                 quota_usage: None,
             };
         upsert_session_file_rollups(

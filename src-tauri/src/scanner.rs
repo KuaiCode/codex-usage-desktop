@@ -319,13 +319,14 @@ fn parse_rollup(
     pricing: &PricingSource,
 ) -> Result<SessionFileRollup, String> {
     let mut events = Vec::new();
-    let (title, quota) = parse_session_file_with_quota(raw, &mut events, timezone)?;
+    let (title, quota, turn_count) = parse_session_file_with_quota(raw, &mut events, timezone)?;
     Ok(SessionFileRollup {
         path: file.cache_key.clone(),
         modified_at_ms: file.modified_at_ms,
         size_bytes: file.size_bytes,
         rows: build_daily_rows(&events, timezone, updated_at, pricing),
         prompt_title: Some(title),
+        turn_count,
         quota_usage: Some(quota),
     })
 }
@@ -446,7 +447,7 @@ fn load_daily_rows(
         }
 
         let mut events = Vec::new();
-        let (prompt_title, quota_usage) =
+        let (prompt_title, quota_usage, turn_count) =
             load_session_file_with_quota(&file.path, &mut events, timezone)?;
         let rows = build_daily_rows(&events, timezone, updated_at, pricing_source);
         metrics.files_parsed += 1;
@@ -457,6 +458,7 @@ fn load_daily_rows(
             size_bytes: file.size_bytes,
             rows: rows.clone(),
             prompt_title: Some(prompt_title),
+            turn_count,
             quota_usage: Some(quota_usage),
         });
         all_rows.extend(rows);
@@ -550,14 +552,14 @@ fn modified_at_ms(metadata: &fs::Metadata) -> i64 {
 
 #[cfg(test)]
 fn load_session_file(path: &Path, events: &mut Vec<UsageEvent>) -> Result<String, String> {
-    load_session_file_with_quota(path, events, "UTC").map(|(title, _)| title)
+    load_session_file_with_quota(path, events, "UTC").map(|(title, _, _)| title)
 }
 
 fn load_session_file_with_quota(
     path: &Path,
     events: &mut Vec<UsageEvent>,
     timezone: &str,
-) -> Result<(String, SessionQuotaRollup), String> {
+) -> Result<(String, SessionQuotaRollup, usize), String> {
     let content = read_session_file(path)?;
     parse_session_file_with_quota(&content, events, timezone)
 }
@@ -566,13 +568,14 @@ fn parse_session_file_with_quota(
     content: &str,
     events: &mut Vec<UsageEvent>,
     timezone: &str,
-) -> Result<(String, SessionQuotaRollup), String> {
+) -> Result<(String, SessionQuotaRollup, usize), String> {
     let mut previous_totals: Option<RawUsage> = None;
     let mut current_model: Option<String> = None;
     let mut current_model_is_fallback = false;
     let mut current_project_path: Option<String> = None;
     let mut prompt_title = None;
     let mut has_turn_context = false;
+    let mut turns = crate::session_replay::SessionTurnCounter::default();
     let mut quota_snapshots = Vec::new();
     let event_start = events.len();
 
@@ -586,6 +589,7 @@ fn parse_session_file_with_quota(
             continue;
         };
 
+        turns.ingest(&entry);
         let entry_type = entry.get("type").and_then(Value::as_str);
         if entry_type == Some("turn_context") {
             has_turn_context = true;
@@ -657,6 +661,7 @@ fn parse_session_file_with_quota(
             continue;
         }
 
+        turns.record_current();
         let extracted_model = extract_model(&merge_payload_info(payload, info));
         let mut is_fallback_model = false;
         if let Some(model) = extracted_model.clone() {
@@ -691,12 +696,14 @@ fn parse_session_file_with_quota(
     Ok((
         prompt_title.unwrap_or_default(),
         build_quota_rollup(&quota_snapshots, &events[event_start..], timezone),
+        turns.len(),
     ))
 }
 
 fn backfill_session_metadata(path: &Path, timezone: &str, rollup: &mut SessionFileRollup) -> bool {
     match load_session_file_with_quota(path, &mut Vec::new(), timezone) {
-        Ok((title, quota_usage)) => {
+        Ok((title, quota_usage, turn_count)) => {
+            rollup.turn_count = turn_count;
             if rollup
                 .prompt_title
                 .as_deref()
@@ -1264,6 +1271,107 @@ mod tests {
     }
 
     #[test]
+    fn session_turn_counts_survive_cache_migration_and_scoped_refresh() {
+        let (_temporary, home, mut db) = scoped_fixture();
+        let path = home.join("sessions/turn-count.jsonl");
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let timestamp = "2026-09-01T09:00:00Z";
+        let mut entries =
+            vec![serde_json::json!({"type":"session_meta", "payload":{"cwd":"/repo/a"}})];
+        for id in ["first", "first", "second"] {
+            entries.extend([
+                serde_json::json!({"type":"turn_context", "payload":{"turn_id":id, "model":"gpt-5"}}),
+                serde_json::json!({"type":"event_msg", "payload":{"type":"task_started", "turn_id":id}}),
+                serde_json::json!({"type":"event_msg", "payload":{"type":"user_message", "message":"Count turns"}}),
+                serde_json::json!({"timestamp":timestamp, "type":"event_msg", "payload":{"type":"token_count", "info":{"last_token_usage":{"input_tokens":10,"output_tokens":1}}}}),
+            ]);
+        }
+        let raw = entries
+            .iter()
+            .map(Value::to_string)
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, &raw).unwrap();
+        let pricing = PricingSource::embedded();
+        scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into())).unwrap();
+        let session = crate::db::query_session_detail(&db, path.to_str().unwrap()).unwrap();
+        let detail =
+            crate::session_replay::fetch_session_detail(&db, path.to_str().unwrap()).unwrap();
+        assert_eq!(session.turn_count, 2);
+        assert_eq!(session.turn_count, detail.summary.turn_count);
+        assert_eq!(
+            crate::db::query_all_session_file_rollups(&db).unwrap()[0].turn_count,
+            2
+        );
+        let cached =
+            scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into())).unwrap();
+        assert_eq!(cached.metrics.files_reused, 1);
+        // An unchanged legacy cache must still be reparsed and update the project index.
+        db.execute(
+            "UPDATE session_file_rollups SET quota_parser_version = 3, turn_count = 0",
+            [],
+        )
+        .unwrap();
+        let migrated =
+            scan_codex_usage(&mut db, &pricing, Some(home.clone()), Some("UTC".into())).unwrap();
+        assert_eq!(migrated.metrics.files_parsed, 1);
+        assert_eq!(
+            crate::db::query_session_detail(&db, path.to_str().unwrap())
+                .unwrap()
+                .turn_count,
+            2
+        );
+        let indexed: String = db
+            .query_row(
+                "SELECT detail_json FROM project_session_index WHERE path = ?",
+                [path.to_str().unwrap()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Value>(&indexed).unwrap()["turnCount"],
+            2
+        );
+        fs::write(
+            &path,
+            format!("{raw}\n{{\"type\":\"turn_context\",\"payload\":{{\"turn_id\":\"third\"}}}}\n"),
+        )
+        .unwrap();
+        let refreshed = rescan_session(
+            &mut db,
+            &pricing,
+            Some(home),
+            Some("UTC".into()),
+            path.to_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(refreshed.session.turn_count, 3);
+        assert_eq!(
+            refreshed.session.turn_count,
+            refreshed.detail.summary.turn_count
+        );
+    }
+
+    #[test]
+    fn counts_legacy_and_empty_sessions() {
+        for (raw, expected) in [
+            ("", 0),
+            (r#"{"type":"session_meta","payload":{"id":"empty"}}"#, 0),
+            (
+                r#"{"type":"event_msg","payload":{"type":"user_message","message":"Legacy prompt"}}"#,
+                1,
+            ),
+            (
+                r#"{"timestamp":"2026-09-01T09:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":10}}}}"#,
+                1,
+            ),
+        ] {
+            let (_, _, count) = parse_session_file_with_quota(raw, &mut Vec::new(), "UTC").unwrap();
+            assert_eq!(count, expected);
+        }
+    }
+
+    #[test]
     fn compressed_sessions_preserve_usage_replay_names_and_scoped_refreshes() {
         for directory in [
             Path::new("sessions").join("2026").join("09").join("01"),
@@ -1303,6 +1411,7 @@ mod tests {
             .unwrap();
             assert_eq!(result.session.path, compressed.to_string_lossy());
             assert_eq!(result.session.total_tokens, 110);
+            assert_eq!(result.session.turn_count, result.detail.summary.turn_count);
             assert_eq!(
                 result.session.thread_name.as_deref(),
                 Some("Official title")
@@ -1856,6 +1965,7 @@ mod tests {
             &mut db,
             &[
                 SessionFileRollup {
+                    turn_count: 0,
                     path: failed_path.to_string_lossy().to_string(),
                     modified_at_ms: modified_at_ms(&failed_metadata),
                     size_bytes: failed_metadata.len() as i64,
@@ -1864,6 +1974,7 @@ mod tests {
                     quota_usage: None,
                 },
                 SessionFileRollup {
+                    turn_count: 0,
                     path: valid_path.to_string_lossy().to_string(),
                     modified_at_ms: modified_at_ms(&valid_metadata),
                     size_bytes: valid_metadata.len() as i64,
@@ -2113,7 +2224,7 @@ mod tests {
         )
         .unwrap();
 
-        let (_, quota) = load_session_file_with_quota(&path, &mut Vec::new(), "UTC").unwrap();
+        let (_, quota, _) = load_session_file_with_quota(&path, &mut Vec::new(), "UTC").unwrap();
 
         assert_eq!(quota.session.five_hour.len(), 1);
         assert_eq!(quota.session.weekly.len(), 1);
